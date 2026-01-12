@@ -1,0 +1,7 @@
+{
+    "server_port": 8888,
+    "discovery_port": 8889,
+    "screen_quality": 75,
+    "mouse_sensitivity": 1.0,
+    "enable_gamepad": true
+}
