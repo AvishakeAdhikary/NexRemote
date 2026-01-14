@@ -9,7 +9,7 @@ def setup_logger():
         os.makedirs('logs')
     
     # Create log filename with timestamp
-    log_filename = f"logs/monect_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    log_filename = f"logs/nexremote_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     
     # Configure logging
     logging.basicConfig(
