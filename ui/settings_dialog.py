@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt
 
 class SettingsDialog(QDialog):
-    """Settings configuration dialog with security options"""
+    """Settings configuration dialog with USB support"""
     
     def __init__(self, config, parent=None):
         super().__init__(parent)
@@ -29,6 +29,10 @@ class SettingsDialog(QDialog):
         self.port_spin.setValue(self.config.get('server_port', 8888))
         port_layout.addWidget(self.port_spin)
         network_layout.addLayout(port_layout)
+        
+        self.usb_check = QCheckBox("Enable USB Connection (ADB)")
+        self.usb_check.setChecked(self.config.get('enable_usb', True))
+        network_layout.addWidget(self.usb_check)
         
         network_group.setLayout(network_layout)
         layout.addWidget(network_group)
@@ -98,4 +102,5 @@ class SettingsDialog(QDialog):
         self.config.set('enable_gamepad', self.gamepad_check.isChecked())
         self.config.set('require_pairing', self.pairing_check.isChecked())
         self.config.set('auto_approve', self.auto_approve_check.isChecked())
+        self.config.set('enable_usb', self.usb_check.isChecked())
         super().accept()

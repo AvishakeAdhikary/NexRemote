@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/foundation.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 import 'package:nexremote/models/control_command.dart';
 import 'package:nexremote/models/pc_device.dart';
 
@@ -12,6 +13,7 @@ class NetworkService extends ChangeNotifier {
   bool _authenticated = false;
   String _pcName = '';
   String _pcAddress = '';
+  bool _isUSB = false;
   encrypt.Encrypter? _encrypter;
   
   final StreamController<Map<String, dynamic>> _messageController = 
@@ -21,62 +23,113 @@ class NetworkService extends ChangeNotifier {
   bool get authenticated => _authenticated;
   String get pcName => _pcName;
   String get pcAddress => _pcAddress;
+  bool get isUSB => _isUSB;
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
   
   Future<List<PCDevice>> discoverPCs() async {
     List<PCDevice> devices = [];
     
-    debugPrint("Starting PC discovery...");
+    debugPrint("=== DISCOVERY START ===");
+    debugPrint("Starting PC discovery on port 8889...");
     
     try {
+      // Create UDP socket for discovery
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       socket.broadcastEnabled = true;
       
-      // Send discovery request
+      debugPrint("UDP socket created and bound to port ${socket.port}");
+      
+      // Prepare discovery message
       final discoveryMsg = jsonEncode({'type': 'discover'});
       final data = utf8.encode(discoveryMsg);
       
-      debugPrint("Sending broadcast to port 8889...");
+      debugPrint("Discovery message: $discoveryMsg");
+      debugPrint("Message size: ${data.length} bytes");
       
-      // Send to broadcast address
-      final sent = socket.send(
-        data,
-        InternetAddress('255.255.255.255'),
-        8889,
-      );
+      // Get local network information
+      final info = NetworkInfo();
+      String? wifiIP = await info.getWifiIP();
+      String? wifiBroadcast = await info.getWifiBroadcast();
+      String? wifiSubnet = await info.getWifiSubmask();
       
-      debugPrint("Broadcast sent: $sent bytes");
+      debugPrint("Local WiFi IP: $wifiIP");
+      debugPrint("WiFi Broadcast: $wifiBroadcast");
+      debugPrint("WiFi Subnet: $wifiSubnet");
       
-      // Also try sending to local subnet
-      try {
-        final interfaces = await NetworkInterface.list();
-        for (var interface in interfaces) {
-          for (var addr in interface.addresses) {
-            if (addr.type == InternetAddressType.IPv4) {
-              final ip = addr.address;
-              final parts = ip.split('.');
-              if (parts.length == 4) {
-                final broadcast = '${parts[0]}.${parts[1]}.${parts[2]}.255';
-                socket.send(data, InternetAddress(broadcast), 8889);
-                debugPrint("Sent to subnet broadcast: $broadcast");
-              }
-            }
-          }
+      // Calculate subnet broadcast if not available
+      List<String> broadcastAddresses = ['255.255.255.255'];
+      
+      if (wifiIP != null) {
+        final ipParts = wifiIP.split('.');
+        if (ipParts.length == 4) {
+          // Add subnet-specific broadcast
+          final subnetBroadcast = '${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.255';
+          broadcastAddresses.add(subnetBroadcast);
+          debugPrint("Calculated subnet broadcast: $subnetBroadcast");
         }
-      } catch (e) {
-        debugPrint("Error getting interfaces: $e");
       }
       
+      if (wifiBroadcast != null && !broadcastAddresses.contains(wifiBroadcast)) {
+        broadcastAddresses.add(wifiBroadcast);
+        debugPrint("Using WiFi broadcast address: $wifiBroadcast");
+      }
+      
+      // Send to all broadcast addresses
+      for (var broadcast in broadcastAddresses) {
+        try {
+          final sent = socket.send(
+            data,
+            InternetAddress(broadcast),
+            8889,
+          );
+          debugPrint("✓ Sent $sent bytes to $broadcast:8889");
+        } catch (e) {
+          debugPrint("✗ Failed to send to $broadcast: $e");
+        }
+      }
+      
+      // Also try sending directly to common router addresses
+      List<String> commonRouterIPs = [];
+      if (wifiIP != null) {
+        final parts = wifiIP.split('.');
+        if (parts.length == 4) {
+          // Try .1 and .254 (common router addresses)
+          commonRouterIPs.add('${parts[0]}.${parts[1]}.${parts[2]}.1');
+          commonRouterIPs.add('${parts[0]}.${parts[1]}.${parts[2]}.254');
+          
+          // Try scanning nearby IPs (same subnet)
+          for (int i = 1; i < 255; i++) {
+            commonRouterIPs.add('${parts[0]}.${parts[1]}.${parts[2]}.$i');
+          }
+        }
+      }
+      
+      debugPrint("Trying ${commonRouterIPs.length} individual IPs...");
+      
+      int sentCount = 0;
+      for (var ip in commonRouterIPs) {
+        try {
+          socket.send(data, InternetAddress(ip), 8889);
+          sentCount++;
+        } catch (e) {
+          // Ignore errors for individual IPs
+        }
+      }
+      
+      debugPrint("Sent discovery to $sentCount IPs in subnet");
+      
       // Listen for responses
-      final completer = Completer<List<PCDevice>>();
+      int responseCount = 0;
       
       socket.listen((event) {
         if (event == RawSocketEvent.read) {
           final packet = socket.receive();
           if (packet != null) {
+            responseCount++;
             try {
               final message = utf8.decode(packet.data);
-              debugPrint("Received response: $message from ${packet.address.address}");
+              debugPrint("[$responseCount] Received from ${packet.address.address}:${packet.port}");
+              debugPrint("Response: $message");
               
               final json = jsonDecode(message);
               
@@ -85,35 +138,41 @@ class NetworkService extends ChangeNotifier {
                 
                 if (!devices.any((d) => d.ipAddress == device.ipAddress)) {
                   devices.add(device);
-                  debugPrint("Found PC: ${device.name} at ${device.ipAddress}");
+                  debugPrint("✓ Found PC: ${device.name} at ${device.ipAddress}:${device.port}");
                 }
               }
             } catch (e) {
-              debugPrint('Error parsing discovery response: $e');
+              debugPrint("Error parsing response $responseCount: $e");
             }
           }
         }
       });
       
       // Wait for responses
-      Timer(const Duration(seconds: 3), () {
-        socket.close();
-        if (!completer.isCompleted) {
-          completer.complete(devices);
-        }
-      });
+      debugPrint("Waiting 5 seconds for responses...");
+      await Future.delayed(const Duration(seconds: 5));
       
-      return await completer.future;
+      socket.close();
+      
+      debugPrint("=== DISCOVERY END ===");
+      debugPrint("Found ${devices.length} device(s)");
+      
+      return devices;
       
     } catch (e) {
       debugPrint('Discovery error: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       return devices;
     }
   }
   
   Future<bool> connectToPC(PCDevice device, String pairingCode) async {
     try {
+      debugPrint("=== CONNECTION START ===");
       debugPrint("Connecting to ${device.ipAddress}:${device.port}...");
+      debugPrint("Connection type: ${device.isUSB ? 'USB' : 'WiFi'}");
+      
+      _isUSB = device.isUSB;
       
       _socket = await Socket.connect(
         device.ipAddress,
@@ -121,25 +180,25 @@ class NetworkService extends ChangeNotifier {
         timeout: const Duration(seconds: 10),
       );
       
-      debugPrint("TCP connection established");
+      debugPrint("✓ TCP connection established");
       
       // Perform handshake
       if (!await _performHandshake()) {
-        debugPrint("Handshake failed");
+        debugPrint("✗ Handshake failed");
         disconnect();
         return false;
       }
       
-      debugPrint("Handshake successful");
+      debugPrint("✓ Handshake successful");
       
       // Authenticate
       if (!await _authenticate(pairingCode, device.name)) {
-        debugPrint("Authentication failed");
+        debugPrint("✗ Authentication failed");
         disconnect();
         return false;
       }
       
-      debugPrint("Authentication successful");
+      debugPrint("✓ Authentication successful");
       
       _connected = true;
       _authenticated = true;
@@ -153,11 +212,13 @@ class NetworkService extends ChangeNotifier {
         onDone: _handleDone,
       );
       
+      debugPrint("=== CONNECTION SUCCESS ===");
       notifyListeners();
       return true;
       
     } catch (e) {
       debugPrint('Connection error: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       _connected = false;
       _authenticated = false;
       notifyListeners();
@@ -167,13 +228,13 @@ class NetworkService extends ChangeNotifier {
   
   Future<bool> _performHandshake() async {
     try {
-      // Wait for handshake from server
       final completer = Completer<bool>();
       StreamSubscription? subscription;
       
       subscription = _socket!.listen((data) {
         try {
           final message = utf8.decode(data);
+          debugPrint("Handshake received: $message");
           final json = jsonDecode(message.trim());
           
           if (json['type'] == 'handshake') {
@@ -181,9 +242,12 @@ class NetworkService extends ChangeNotifier {
             final key = encrypt.Key.fromUtf8(keyStr.padRight(32).substring(0, 32));
             _encrypter = encrypt.Encrypter(encrypt.Fernet(key));
             
+            debugPrint("Encryption key received and set");
+            
             // Send acknowledgment
             final ack = jsonEncode({'type': 'handshake_ack'}) + '\n';
             _socket!.add(utf8.encode(ack));
+            debugPrint("Handshake ACK sent");
             
             subscription?.cancel();
             completer.complete(true);
@@ -196,6 +260,7 @@ class NetworkService extends ChangeNotifier {
       // Timeout
       Timer(const Duration(seconds: 10), () {
         if (!completer.isCompleted) {
+          debugPrint("Handshake timeout");
           subscription?.cancel();
           completer.complete(false);
         }
@@ -211,18 +276,26 @@ class NetworkService extends ChangeNotifier {
   
   Future<bool> _authenticate(String pairingCode, String deviceName) async {
     try {
+      debugPrint("Starting authentication with code: $pairingCode");
+      
       final completer = Completer<bool>();
       StreamSubscription? subscription;
       
       subscription = _socket!.listen((data) {
         try {
           final encrypted = data;
-          final decrypted = _encrypter!.decrypt64(
-            String.fromCharCodes(encrypted.where((b) => b != 10)), // Remove newline
-          );
+          final encryptedStr = String.fromCharCodes(encrypted.where((b) => b != 10));
+          
+          if (encryptedStr.isEmpty) return;
+          
+          final decrypted = _encrypter!.decrypt64(encryptedStr);
           final json = jsonDecode(decrypted);
           
+          debugPrint("Auth message received: ${json['type']}");
+          
           if (json['type'] == 'auth_request') {
+            debugPrint("Auth request received, sending credentials...");
+            
             // Send auth response
             final authData = {
               'type': 'auth_response',
@@ -233,10 +306,12 @@ class NetworkService extends ChangeNotifier {
             _sendEncrypted(authData);
             
           } else if (json['type'] == 'auth_success') {
+            debugPrint("✓ Authentication successful");
             subscription?.cancel();
             completer.complete(true);
             
           } else if (json['type'] == 'auth_failed') {
+            debugPrint("✗ Authentication failed: ${json['reason']}");
             subscription?.cancel();
             completer.complete(false);
           }
@@ -248,6 +323,7 @@ class NetworkService extends ChangeNotifier {
       // Timeout
       Timer(const Duration(seconds: 30), () {
         if (!completer.isCompleted) {
+          debugPrint("Authentication timeout");
           subscription?.cancel();
           completer.complete(false);
         }
@@ -267,7 +343,8 @@ class NetworkService extends ChangeNotifier {
     try {
       final jsonStr = jsonEncode(data);
       final encrypted = _encrypter!.encrypt(jsonStr);
-      _socket!.add(utf8.encode(encrypted.base64) + [10]); // Add newline
+      _socket!.add(utf8.encode(encrypted.base64) + [10]);
+      debugPrint("Encrypted message sent: ${data['type']}");
     } catch (e) {
       debugPrint("Send encrypted error: $e");
     }
@@ -320,6 +397,7 @@ class NetworkService extends ChangeNotifier {
     _authenticated = false;
     _pcName = '';
     _pcAddress = '';
+    _isUSB = false;
     _encrypter = null;
     notifyListeners();
   }

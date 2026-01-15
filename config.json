@@ -4,6 +4,7 @@
     "screen_quality": 75,
     "mouse_sensitivity": 1.0,
     "enable_gamepad": true,
-    "require_pairing": true,
-    "auto_approve": true
+    "require_pairing": false,
+    "auto_approve": true,
+    "enable_usb": true
 }

@@ -28,7 +28,8 @@ class Config:
             'mouse_sensitivity': 1.0,
             'enable_gamepad': True,
             'require_pairing': True,
-            'auto_approve': False
+            'auto_approve': False,
+            'enable_usb': True
         }
     
     def save(self):
