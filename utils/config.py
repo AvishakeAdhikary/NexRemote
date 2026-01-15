@@ -26,7 +26,9 @@ class Config:
             'discovery_port': 8889,
             'screen_quality': 75,
             'mouse_sensitivity': 1.0,
-            'enable_gamepad': True
+            'enable_gamepad': True,
+            'require_pairing': True,
+            'auto_approve': False
         }
     
     def save(self):

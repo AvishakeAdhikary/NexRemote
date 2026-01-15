@@ -3,5 +3,7 @@
     "discovery_port": 8889,
     "screen_quality": 75,
     "mouse_sensitivity": 1.0,
-    "enable_gamepad": true
+    "enable_gamepad": true,
+    "require_pairing": true,
+    "auto_approve": true
 }

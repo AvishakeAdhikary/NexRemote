@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QSpinBox, QDoubleSpinBox, QCheckBox, QPushButton)
+                             QSpinBox, QDoubleSpinBox, QCheckBox, QPushButton, QGroupBox)
 from PyQt6.QtCore import Qt
 
 class SettingsDialog(QDialog):
-    """Settings configuration dialog"""
+    """Settings configuration dialog with security options"""
     
     def __init__(self, config, parent=None):
         super().__init__(parent)
@@ -14,27 +14,51 @@ class SettingsDialog(QDialog):
         """Initialize UI"""
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
         
         layout = QVBoxLayout()
         
-        # Server port
+        # Network settings
+        network_group = QGroupBox("Network Settings")
+        network_layout = QVBoxLayout()
+        
         port_layout = QHBoxLayout()
         port_layout.addWidget(QLabel("Server Port:"))
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1024, 65535)
         self.port_spin.setValue(self.config.get('server_port', 8888))
         port_layout.addWidget(self.port_spin)
-        layout.addLayout(port_layout)
+        network_layout.addLayout(port_layout)
         
-        # Screen quality
+        network_group.setLayout(network_layout)
+        layout.addWidget(network_group)
+        
+        # Security settings
+        security_group = QGroupBox("Security Settings")
+        security_layout = QVBoxLayout()
+        
+        self.pairing_check = QCheckBox("Require Pairing Code")
+        self.pairing_check.setChecked(self.config.get('require_pairing', True))
+        security_layout.addWidget(self.pairing_check)
+        
+        self.auto_approve_check = QCheckBox("Auto-approve Devices")
+        self.auto_approve_check.setChecked(self.config.get('auto_approve', False))
+        security_layout.addWidget(self.auto_approve_check)
+        
+        security_group.setLayout(security_layout)
+        layout.addWidget(security_group)
+        
+        # Performance settings
+        perf_group = QGroupBox("Performance Settings")
+        perf_layout = QVBoxLayout()
+        
         quality_layout = QHBoxLayout()
         quality_layout.addWidget(QLabel("Screen Quality (1-100):"))
         self.quality_spin = QSpinBox()
         self.quality_spin.setRange(1, 100)
         self.quality_spin.setValue(self.config.get('screen_quality', 75))
         quality_layout.addWidget(self.quality_spin)
-        layout.addLayout(quality_layout)
+        perf_layout.addLayout(quality_layout)
         
         # Mouse sensitivity
         sens_layout = QHBoxLayout()
@@ -44,12 +68,15 @@ class SettingsDialog(QDialog):
         self.sens_spin.setSingleStep(0.1)
         self.sens_spin.setValue(self.config.get('mouse_sensitivity', 1.0))
         sens_layout.addWidget(self.sens_spin)
-        layout.addLayout(sens_layout)
+        perf_layout.addLayout(sens_layout)
         
         # Enable gamepad
         self.gamepad_check = QCheckBox("Enable Virtual Gamepad")
         self.gamepad_check.setChecked(self.config.get('enable_gamepad', True))
-        layout.addWidget(self.gamepad_check)
+        perf_layout.addWidget(self.gamepad_check)
+        
+        perf_group.setLayout(perf_layout)
+        layout.addWidget(perf_group)
         
         # Buttons
         btn_layout = QHBoxLayout()
@@ -69,4 +96,6 @@ class SettingsDialog(QDialog):
         self.config.set('screen_quality', self.quality_spin.value())
         self.config.set('mouse_sensitivity', self.sens_spin.value())
         self.config.set('enable_gamepad', self.gamepad_check.isChecked())
+        self.config.set('require_pairing', self.pairing_check.isChecked())
+        self.config.set('auto_approve', self.auto_approve_check.isChecked())
         super().accept()

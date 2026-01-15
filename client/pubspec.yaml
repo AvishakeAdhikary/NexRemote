@@ -39,6 +39,7 @@ dependencies:
   file_picker: ^10.3.8
   shared_preferences: ^2.5.4
   provider: ^6.1.5+1
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:
