@@ -1,0 +1,216 @@
+syntax = "proto3";
+
+package nexremote;
+
+// Base Message
+message Message {
+  string type = 1;
+  int64 timestamp = 2;
+  string client_id = 3;
+  
+  oneof payload {
+    AuthRequest auth_request = 10;
+    AuthResponse auth_response = 11;
+    KeyboardInput keyboard_input = 12;
+    MouseInput mouse_input = 13;
+    GamepadInput gamepad_input = 14;
+    SensorInput sensor_input = 15;
+    ScreenFrame screen_frame = 16;
+    CameraFrame camera_frame = 17;
+    ClipboardData clipboard_data = 18;
+    FileTransfer file_transfer = 19;
+  }
+}
+
+// Authentication
+message AuthRequest {
+  string device_id = 1;
+  string device_name = 2;
+  string version = 3;
+  bytes certificate = 4;
+}
+
+message AuthResponse {
+  bool success = 1;
+  string message = 2;
+  string token = 3;
+  ServerCapabilities capabilities = 4;
+}
+
+message ServerCapabilities {
+  bool keyboard = 1;
+  bool mouse = 2;
+  bool gamepad = 3;
+  bool screen_streaming = 4;
+  bool virtual_camera = 5;
+  bool file_transfer = 6;
+  bool clipboard = 7;
+  bool multi_display = 8;
+}
+
+// Keyboard Input
+message KeyboardInput {
+  enum Action {
+    TYPE = 0;
+    PRESS = 1;
+    RELEASE = 2;
+    HOTKEY = 3;
+  }
+  
+  Action action = 1;
+  string key = 2;
+  string text = 3;
+  repeated string keys = 4;
+}
+
+// Mouse Input
+message MouseInput {
+  enum Action {
+    MOVE = 0;
+    MOVE_RELATIVE = 1;
+    CLICK = 2;
+    PRESS = 3;
+    RELEASE = 4;
+    SCROLL = 5;
+  }
+  
+  enum Button {
+    LEFT = 0;
+    RIGHT = 1;
+    MIDDLE = 2;
+  }
+  
+  Action action = 1;
+  int32 x = 2;
+  int32 y = 3;
+  int32 dx = 4;
+  int32 dy = 5;
+  Button button = 6;
+  int32 count = 7;
+}
+
+// Gamepad Input
+message GamepadInput {
+  enum InputType {
+    BUTTON = 0;
+    TRIGGER = 1;
+    JOYSTICK = 2;
+    DPAD = 3;
+    GYRO = 4;
+  }
+  
+  InputType input_type = 1;
+  
+  // Button
+  string button = 2;
+  bool pressed = 3;
+  
+  // Trigger
+  string trigger = 4;
+  float value = 5;
+  
+  // Joystick
+  string stick = 6;
+  float x = 7;
+  float y = 8;
+  
+  // D-Pad
+  string direction = 9;
+  
+  // Gyro
+  float gyro_x = 10;
+  float gyro_y = 11;
+  float gyro_z = 12;
+}
+
+// Sensor Input
+message SensorInput {
+  enum SensorType {
+    GYROSCOPE = 0;
+    ACCELEROMETER = 1;
+  }
+  
+  SensorType sensor_type = 1;
+  float x = 2;
+  float y = 3;
+  float z = 4;
+}
+
+// Screen Frame
+message ScreenFrame {
+  bytes data = 1;
+  int32 width = 2;
+  int32 height = 3;
+  string format = 4; // jpeg, png, h264
+  int32 quality = 5;
+}
+
+// Camera Frame
+message CameraFrame {
+  bytes data = 1;
+  int32 width = 2;
+  int32 height = 3;
+  string format = 4;
+}
+
+// Clipboard Data
+message ClipboardData {
+  enum DataType {
+    TEXT = 0;
+    IMAGE = 1;
+    FILE = 2;
+  }
+  
+  DataType data_type = 1;
+  string text = 2;
+  bytes binary_data = 3;
+  string filename = 4;
+}
+
+// File Transfer
+message FileTransfer {
+  enum Action {
+    LIST = 0;
+    UPLOAD = 1;
+    DOWNLOAD = 2;
+    DELETE = 3;
+  }
+  
+  Action action = 1;
+  string path = 2;
+  bytes data = 3;
+  int64 size = 4;
+  string filename = 5;
+}
+
+// Discovery
+message DiscoveryRequest {
+  bytes magic = 1;
+}
+
+message DiscoveryResponse {
+  string server_name = 1;
+  string server_id = 2;
+  int32 port = 3;
+  string version = 4;
+  string ip_address = 5;
+}
+
+// NAT Traversal
+message NATMessage {
+  enum MessageType {
+    OFFER = 0;
+    ANSWER = 1;
+    ICE_CANDIDATE = 2;
+  }
+  
+  MessageType message_type = 1;
+  string sdp = 2;
+  ICECandidate ice_candidate = 3;
+}
+
+message ICECandidate {
+  string candidate = 1;
+  string sdp_mid = 2;
+  int32 sdp_m_line_index = 3;
+}
