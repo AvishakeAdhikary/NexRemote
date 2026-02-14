@@ -3,6 +3,12 @@ import '../core/connection_manager.dart' as conn;
 import '../utils/logger.dart';
 import 'connection_screen.dart';
 import 'gamepad_screen.dart';
+import 'touchpad_screen.dart';
+import 'camera_screen.dart';
+import 'file_explorer_screen.dart';
+import 'screen_share_screen.dart';
+import 'media_control_screen.dart';
+import 'task_manager_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -131,43 +137,37 @@ class _HomeScreenState extends State<HomeScreen> {
         'Touchpad',
         Icons.touch_app,
         Colors.purple,
-        () => _showFeature('Touchpad'),
-      ),
-      _FeatureItem(
-        'Keyboard',
-        Icons.keyboard,
-        Colors.green,
-        () => _showFeature('Keyboard'),
+        () => _navigateToTouchpad(),
       ),
       _FeatureItem(
         'File Explorer',
         Icons.folder,
         Colors.orange,
-        () => _showFeature('File Explorer'),
+        () => _navigateToFileExplorer(),
       ),
       _FeatureItem(
         'Camera',
         Icons.camera_alt,
         Colors.red,
-        () => _showFeature('Camera'),
+        () => _navigateToCamera(),
       ),
       _FeatureItem(
         'Screen Share',
         Icons.screen_share,
         Colors.teal,
-        () => _showFeature('Screen Share'),
+        () => _navigateToScreenShare(),
       ),
       _FeatureItem(
         'Media Control',
         Icons.music_note,
         Colors.pink,
-        () => _showFeature('Media Control'),
+        () => _navigateToMediaControl(),
       ),
       _FeatureItem(
         'Task Manager',
         Icons.task,
         Colors.indigo,
-        () => _showFeature('Task Manager'),
+        () => _navigateToTaskManager(),
       ),
     ];
 
@@ -267,6 +267,72 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => GamepadScreen(
+          connectionManager: _connectionManager,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToTouchpad() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TouchpadScreen(
+          connectionManager: _connectionManager,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToFileExplorer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FileExplorerScreen(
+          connectionManager: _connectionManager,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToCamera() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CameraScreen(
+          connectionManager: _connectionManager,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToScreenShare() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScreenShareScreen(
+          connectionManager: _connectionManager,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToMediaControl() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MediaControlScreen(
+          connectionManager: _connectionManager,
+        ),
+      ),
+    );
+  }
+
+  void _navigateToTaskManager() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskManagerScreen(
           connectionManager: _connectionManager,
         ),
       ),

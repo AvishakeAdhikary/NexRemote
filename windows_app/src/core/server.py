@@ -17,8 +17,12 @@ from security.audit_logger import AuditLogger
 from input.virtual_keyboard import VirtualKeyboard
 from input.virtual_mouse import VirtualMouse
 from input.virtual_gamepad import VirtualGamepad
+from input.media_controller import MediaController
 from input.input_validator import InputValidator
 from streaming.screen_capture import ScreenCapture
+from streaming.virtual_camera import VirtualCamera
+from ui.file_explorer import FileExplorer
+from ui.task_manager import TaskManager
 from utils.logger import get_logger
 from utils.protocol import MessageHandler
 
@@ -51,9 +55,15 @@ class NexRemoteServer(QObject):
         self.keyboard = VirtualKeyboard()
         self.mouse = VirtualMouse()
         self.gamepad = VirtualGamepad()
+        self.media_controller = MediaController()
         
-        # Streaming
+        # Streaming and camera
         self.screen_capture = ScreenCapture(config)
+        self.virtual_camera = VirtualCamera(config)
+        
+        # File system and process management
+        self.file_explorer = FileExplorer(config)
+        self.task_manager = TaskManager()
         
         # Active connections
         self.clients: Dict[str, websockets.WebSocketServerProtocol] = {}
@@ -186,12 +196,20 @@ class NexRemoteServer(QObject):
     
     async def process_message(self, client_id: str, message: bytes):
         """Process incoming message from client"""
+        msg_type = 'unknown'  # Initialize for error handling
         try:
             # Decrypt message
             decrypted = self.encryption.decrypt(message)
+            
+            # Debug: Log the decrypted data
+            logger.debug(f"Decrypted data length: {len(decrypted)}")
+            logger.debug(f"Decrypted data (first 200 chars): {decrypted[:200]}")
+            logger.debug(f"Decrypted data repr: {repr(decrypted[:200])}")
+            
             data = json.loads(decrypted)
             
-            msg_type = data.get('type')
+            msg_type = data.get('type', 'unknown')
+            logger.debug(f"Received message type: {msg_type} from {client_id}")
             
             # Validate input
             if not self.input_validator.validate(data):
@@ -206,6 +224,18 @@ class NexRemoteServer(QObject):
                 self.mouse.send_input(data)
             elif msg_type == 'gamepad':
                 self.gamepad.send_input(data)
+            elif msg_type == 'camera':
+                self._handle_camera(data)
+            elif msg_type == 'file_explorer':
+                response = self.file_explorer.handle_request(data)
+                await self._send_response(client_id, response)
+            elif msg_type == 'screen_share':
+                await self._handle_screen_share(client_id, data)
+            elif msg_type == 'media_control':
+                self.media_controller.send_command(data)
+            elif msg_type == 'task_manager':
+                response = self.task_manager.handle_request(data)
+                await self._send_response(client_id, response)
             elif msg_type == 'request_screen':
                 await self.send_screen_frame(client_id)
             elif msg_type == 'clipboard':
@@ -213,10 +243,16 @@ class NexRemoteServer(QObject):
             else:
                 logger.warning(f"Unknown message type: {msg_type}")
             
-            self.message_received.emit(client_id, data)
+            # Emit signal (may fail if no UI connected)
+            try:
+                self.message_received.emit(client_id, data)
+            except Exception as emit_error:
+                logger.debug(f"Signal emit warning (non-critical): {emit_error}")
             
+        except AttributeError as e:
+            logger.error(f"Handler attribute error for message type '{msg_type}': {e}", exc_info=True)
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
+            logger.error(f"Error processing message type '{msg_type}': {type(e).__name__}: {e}", exc_info=True)
     
     async def send_screen_frame(self, client_id: str):
         """Send screen frame to client"""
@@ -289,3 +325,59 @@ class NexRemoteServer(QObject):
         """Handle clipboard sync"""
         # Implementation for clipboard handling
         pass
+    
+    def _handle_camera(self, data: dict):
+        """Handle camera-related messages"""
+        try:
+            action = data.get('action')
+            
+            if action == 'start':
+                self.virtual_camera.start_virtual_camera()
+                logger.info("Virtual camera started")
+            elif action == 'stop':
+                self.virtual_camera.stop_virtual_camera()
+                logger.info("Virtual camera stopped")
+            elif action == 'frame':
+                frame_data = data.get('data')
+                if frame_data:
+                    self.virtual_camera.receive_frame(frame_data)
+        except Exception as e:
+            logger.error(f"Error handling camera: {e}", exc_info=True)
+    
+    async def _handle_screen_share(self, client_id: str, data: dict):
+        """Handle screen share requests"""
+        try:
+            action = data.get('action')
+            
+            if action == 'start':
+                logger.info(f"Screen sharing started for client {client_id}")
+            elif action == 'stop':
+                logger.info(f"Screen sharing stopped for client {client_id}")
+            elif action == 'request_frame':
+                display_index = data.get('display_index', 0)
+                await self.send_screen_frame(client_id)
+            elif action == 'list_displays':
+                # Return list of available displays (placeholder for now)
+                response = {
+                    'action': 'display_list',
+                    'displays': [
+                        {'index': 0, 'name': 'Primary Display', 'width': 1920, 'height': 1080}
+                    ]
+                }
+                await self._send_response(client_id, response)
+        except Exception as e:
+            logger.error(f"Error handling screen share: {e}", exc_info=True)
+    
+    async def _send_response(self, client_id: str, response: dict):
+        """Send a response message to a specific client"""
+        try:
+            if client_id not in self.clients:
+                logger.warning(f"Cannot send response to disconnected client {client_id}")
+                return
+            
+            message = json.dumps(response)
+            encrypted = self.encryption.encrypt(message)
+            await self.clients[client_id].send(encrypted)
+            
+        except Exception as e:
+            logger.error(f"Error sending response to {client_id}: {e}", exc_info=True)
