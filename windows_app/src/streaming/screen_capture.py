@@ -18,7 +18,6 @@ class ScreenCapture:
     def __init__(self, config):
         self.config = config
         self.running = False
-        self.sct = mss.mss()
         
         # Settings
         self.fps = config.get('screen_fps', 30)
@@ -29,19 +28,23 @@ class ScreenCapture:
         self.frame_queue = Queue(maxsize=2)
         self.lock = Lock()
         
-        # Get primary monitor
-        self.monitor = self.sct.monitors[1]  # 0 is all monitors, 1 is primary
+        # Get monitor info using a temporary mss instance
+        with mss.mss() as sct:
+            self.monitors_info = sct.monitors
+            self.monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
         
         logger.info(f"Screen capture initialized: {self.monitor['width']}x{self.monitor['height']} @ {self.fps}fps")
     
     def capture_frame(self) -> str:
-        """Capture a single frame and return as base64 encoded JPEG"""
+        """Capture a single frame and return as base64 encoded JPEG.
+        Creates a new mss instance each time to avoid thread-local storage issues."""
         try:
-            # Capture screenshot
-            screenshot = self.sct.grab(self.monitor)
-            
-            # Convert to numpy array
-            frame = np.array(screenshot)
+            with mss.mss() as sct:
+                # Capture screenshot
+                screenshot = sct.grab(self.monitor)
+                
+                # Convert to numpy array
+                frame = np.array(screenshot)
             
             # Convert BGRA to BGR
             frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
@@ -103,23 +106,31 @@ class ScreenCapture:
     def get_monitors(self) -> list:
         """Get list of available monitors"""
         monitors = []
-        for i, monitor in enumerate(self.sct.monitors[1:], 1):  # Skip "all monitors"
-            monitors.append({
-                'id': i,
-                'width': monitor['width'],
-                'height': monitor['height'],
-                'left': monitor['left'],
-                'top': monitor['top']
-            })
+        try:
+            with mss.mss() as sct:
+                for i, monitor in enumerate(sct.monitors[1:], 1):  # Skip "all monitors"
+                    monitors.append({
+                        'id': i,
+                        'width': monitor['width'],
+                        'height': monitor['height'],
+                        'left': monitor['left'],
+                        'top': monitor['top']
+                    })
+        except Exception as e:
+            logger.error(f"Error getting monitors: {e}")
         return monitors
     
     def set_monitor(self, monitor_id: int):
         """Set which monitor to capture"""
-        if 0 < monitor_id < len(self.sct.monitors):
-            self.monitor = self.sct.monitors[monitor_id]
-            logger.info(f"Monitor changed to #{monitor_id}")
-        else:
-            logger.warning(f"Invalid monitor ID: {monitor_id}")
+        try:
+            with mss.mss() as sct:
+                if 0 < monitor_id < len(sct.monitors):
+                    self.monitor = sct.monitors[monitor_id]
+                    logger.info(f"Monitor changed to #{monitor_id}")
+                else:
+                    logger.warning(f"Invalid monitor ID: {monitor_id}")
+        except Exception as e:
+            logger.error(f"Error setting monitor: {e}")
     
     def set_quality(self, quality: int):
         """Set JPEG quality (1-100)"""

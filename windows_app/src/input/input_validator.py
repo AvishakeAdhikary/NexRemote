@@ -8,7 +8,7 @@ class InputValidator:
             'keyboard', 'mouse', 'gamepad', 'clipboard',
             'request_screen', 'file_transfer',
             'screen_share', 'media_control', 'task_manager',
-            'camera', 'sensor'
+            'camera', 'sensor', 'file_explorer'
         }
         
         self.rate_limits = {}

@@ -28,8 +28,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("NexRemote")
         self.setMinimumSize(600, 400)
         
-        # Set window icon from shared assets
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'shared', 'assets', 'logo.png')
+        # Set window icon from local assets
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'images', 'logo.png')
         if os.path.exists(logo_path):
             self.setWindowIcon(QIcon(logo_path))
         

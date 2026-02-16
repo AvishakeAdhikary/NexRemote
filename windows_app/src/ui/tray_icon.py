@@ -23,8 +23,8 @@ class TrayIcon(QObject):
         self.tray_icon = QSystemTrayIcon(parent)
         self.tray_icon.setToolTip("NexRemote")
         
-        # Set icon from shared assets
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'shared', 'assets', 'logo.png')
+        # Set icon from local assets
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'images', 'logo.png')
         if os.path.exists(logo_path):
             self.tray_icon.setIcon(QIcon(logo_path))
         

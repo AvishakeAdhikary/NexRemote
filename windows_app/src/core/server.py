@@ -254,6 +254,20 @@ class NexRemoteServer(QObject):
         except Exception as e:
             logger.error(f"Error processing message type '{msg_type}': {type(e).__name__}: {e}", exc_info=True)
     
+    async def _send_response(self, client_id: str, response: dict):
+        """Send an encrypted response back to a specific client"""
+        try:
+            if client_id not in self.clients:
+                logger.warning(f"Client {client_id} not found for response")
+                return
+            
+            message = json.dumps(response)
+            encrypted = self.encryption.encrypt(message)
+            await self.clients[client_id].send(encrypted)
+            logger.debug(f"Sent response to {client_id}: {response.get('type', '?')}/{response.get('action', '?')}")
+        except Exception as e:
+            logger.error(f"Error sending response to {client_id}: {e}")
+    
     async def send_screen_frame(self, client_id: str):
         """Send screen frame to client"""
         try:

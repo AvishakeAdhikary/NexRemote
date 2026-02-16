@@ -5,10 +5,18 @@ class TaskManagerController {
   final ConnectionManager connectionManager;
   final StreamController<Map<String, dynamic>> _responseController =
       StreamController<Map<String, dynamic>>.broadcast();
+  StreamSubscription? _messageSubscription;
 
   Stream<Map<String, dynamic>> get responseStream => _responseController.stream;
 
-  TaskManagerController(this.connectionManager);
+  TaskManagerController(this.connectionManager) {
+    // Route task_manager messages from the global message stream
+    _messageSubscription = connectionManager.messageStream.listen((data) {
+      if (data['type'] == 'task_manager') {
+        _responseController.add(data);
+      }
+    });
+  }
 
   void requestProcessList() {
     connectionManager.sendMessage({
@@ -37,6 +45,7 @@ class TaskManagerController {
   }
 
   void dispose() {
+    _messageSubscription?.cancel();
     _responseController.close();
   }
 }

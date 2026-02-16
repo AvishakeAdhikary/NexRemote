@@ -124,6 +124,15 @@ wheels = [
 ]
 
 [[package]]
+name = "comtypes"
+version = "1.4.15"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/a2/2db93b226887c9a9a354cb39269507213e171fca5be32aeef21b47f14aeb/comtypes-1.4.15.tar.gz", hash = "sha256:c72b9968a4e920087183a364c5a13b174e02b11c302cdd92690d14c95ac1b312", size = 241406, upload-time = "2026-01-19T23:45:46.035Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/2f/ca9029d5da14b5a3a103d6061149a4a94a54ab848f56c7d2809dbb36f48c/comtypes-1.4.15-py3-none-any.whl", hash = "sha256:cda90486de8762ec57d7ce04e68721920911f3f03415cb29afdf7609c427c7e3", size = 274650, upload-time = "2026-01-19T23:45:44.34Z" },
+]
+
+[[package]]
 name = "cryptography"
 version = "46.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -255,6 +264,7 @@ dependencies = [
     { name = "protobuf" },
     { name = "psutil" },
     { name = "pyaudio" },
+    { name = "pycaw" },
     { name = "pynput" },
     { name = "pyopenssl" },
     { name = "pyperclip" },
@@ -276,6 +286,7 @@ requires-dist = [
     { name = "protobuf", specifier = ">=6.33.5" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pyaudio", specifier = ">=0.2.14" },
+    { name = "pycaw", specifier = ">=20251023" },
     { name = "pynput", specifier = ">=1.8.1" },
     { name = "pyopenssl", specifier = ">=25.3.0" },
     { name = "pyperclip", specifier = ">=1.11.0" },
@@ -462,6 +473,19 @@ sdist = { url = "https://files.pythonhosted.org/packages/26/1d/8878c7752febb0f67
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/77/66cd37111a87c1589b63524f3d3c848011d21ca97828422c7fde7665ff0d/PyAudio-0.2.14-cp313-cp313-win32.whl", hash = "sha256:95328285b4dab57ea8c52a4a996cb52be6d629353315be5bfda403d15932a497", size = 150982, upload-time = "2024-11-20T19:12:12.404Z" },
     { url = "https://files.pythonhosted.org/packages/a5/8b/7f9a061c1cc2b230f9ac02a6003fcd14c85ce1828013aecbaf45aa988d20/PyAudio-0.2.14-cp313-cp313-win_amd64.whl", hash = "sha256:692d8c1446f52ed2662120bcd9ddcb5aa2b71f38bda31e58b19fb4672fffba69", size = 173655, upload-time = "2024-11-20T19:12:13.616Z" },
+]
+
+[[package]]
+name = "pycaw"
+version = "20251023"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "comtypes" },
+    { name = "psutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/81/19181e3118a503f94d8689fbbed60616e85d08cee3a295c11245ae73018f/pycaw-20251023.tar.gz", hash = "sha256:19935b92eb5efc3f3ea5ee8a2d37ca49009e9dc00f83d067b74b9922e84b5b3b", size = 23421, upload-time = "2025-10-23T18:26:45.087Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/bc/f60c1622da5c53770c2d62457b5b6fc9623ab41b9d276269b857cd337e22/pycaw-20251023-py3-none-any.whl", hash = "sha256:ef06d234a2fe3c175925a2a8c7ed8824e450851014fdb7d900af1b56ce422d4e", size = 25849, upload-time = "2025-10-23T18:26:43.955Z" },
 ]
 
 [[package]]

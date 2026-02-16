@@ -46,11 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(
-              '../shared/assets/logo.png',
-              width: 32,
-              height: 32,
-            ),
+            Icon(Icons.cast_connected, color: Colors.blue, size: 28),
             const SizedBox(width: 10),
             const Text('NexRemote'),
           ],
@@ -230,10 +226,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Image.asset(
-            '../shared/assets/logo.png',
-            width: 120,
-            height: 120,
+          Icon(
+            Icons.cast_connected,
+            size: 120,
+            color: Colors.blue.withOpacity(0.7),
           ),
           const SizedBox(height: 24),
           Text(

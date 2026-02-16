@@ -25,11 +25,11 @@ class TaskManager:
             elif action == 'system_info':
                 return self._get_system_info()
             else:
-                return {'action': 'error', 'message': f'Unknown action: {action}'}
+                return {'type': 'task_manager', 'action': 'error', 'message': f'Unknown action: {action}'}
                 
         except Exception as e:
             logger.error(f"Error handling task manager request: {e}", exc_info=True)
-            return {'action': 'error', 'message': str(e)}
+            return {'type': 'task_manager', 'action': 'error', 'message': str(e)}
     
     def _list_processes(self) -> dict:
         """List all running processes"""
@@ -57,13 +57,14 @@ class TaskManager:
             processes.sort(key=lambda x: x['cpu'], reverse=True)
             
             return {
+                'type': 'task_manager',
                 'action': 'list_processes',
                 'processes': processes
             }
             
         except Exception as e:
             logger.error(f"Error listing processes: {e}")
-            return {'action': 'error', 'message': f'Failed to list processes: {str(e)}'}
+            return {'type': 'task_manager', 'action': 'error', 'message': f'Failed to list processes: {str(e)}'}
     
     def _end_process(self, pid: int) -> dict:
         """Terminate a process by PID"""
@@ -84,18 +85,19 @@ class TaskManager:
             logger.info(f"Terminated process: {name} (PID: {pid})")
             
             return {
+                'type': 'task_manager',
                 'action': 'process_ended',
                 'pid': pid,
                 'name': name
             }
             
         except psutil.NoSuchProcess:
-            return {'action': 'error', 'message': 'Process not found'}
+            return {'type': 'task_manager', 'action': 'error', 'message': 'Process not found'}
         except psutil.AccessDenied:
-            return {'action': 'error', 'message': 'Access denied - cannot terminate system process'}
+            return {'type': 'task_manager', 'action': 'error', 'message': 'Access denied - cannot terminate system process'}
         except Exception as e:
             logger.error(f"Error ending process: {e}")
-            return {'action': 'error', 'message': f'Failed to end process: {str(e)}'}
+            return {'type': 'task_manager', 'action': 'error', 'message': f'Failed to end process: {str(e)}'}
     
     def _get_system_info(self) -> dict:
         """Get system resource information"""
@@ -105,6 +107,7 @@ class TaskManager:
             disk = psutil.disk_usage('C:\\')
             
             return {
+                'type': 'task_manager',
                 'action': 'system_info',
                 'cpu_usage': round(cpu_percent, 1),
                 'memory_usage': round(memory.percent, 1),
@@ -115,4 +118,4 @@ class TaskManager:
             
         except Exception as e:
             logger.error(f"Error getting system info: {e}")
-            return {'action': 'error', 'message': f'Failed to get system info: {str(e)}'}
+            return {'type': 'task_manager', 'action': 'error', 'message': f'Failed to get system info: {str(e)}'}
