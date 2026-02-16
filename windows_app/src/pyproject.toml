@@ -1,7 +1,7 @@
 [project]
-name = "src"
+name = "nexremote"
 version = "0.1.0"
-description = "Add your description here"
+description = "NexRemote is a remote desktop application that allows you to control your computer from your phone."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

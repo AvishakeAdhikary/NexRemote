@@ -202,14 +202,14 @@ class NexRemoteServer(QObject):
             decrypted = self.encryption.decrypt(message)
             
             # Debug: Log the decrypted data
-            logger.debug(f"Decrypted data length: {len(decrypted)}")
-            logger.debug(f"Decrypted data (first 200 chars): {decrypted[:200]}")
-            logger.debug(f"Decrypted data repr: {repr(decrypted[:200])}")
+            logger.info(f"Decrypted data length: {len(decrypted)}")
+            logger.info(f"Decrypted data (first 200 chars): {decrypted[:200]}")
+            logger.info(f"Decrypted data repr: {repr(decrypted[:200])}")
             
             data = json.loads(decrypted)
             
             msg_type = data.get('type', 'unknown')
-            logger.debug(f"Received message type: {msg_type} from {client_id}")
+            logger.info(f"Received message type: {msg_type} from {client_id}")
             
             # Validate input
             if not self.input_validator.validate(data):
