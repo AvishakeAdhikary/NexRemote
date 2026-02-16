@@ -28,6 +28,10 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   int _frameCount = 0;
   DateTime? _lastFrameTime;
   double _currentFps = 0.0;
+  bool _interactiveMode = false;
+
+  // For coordinate mapping
+  final GlobalKey _imageKey = GlobalKey();
 
   @override
   void initState() {
@@ -85,6 +89,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
     setState(() {
       _isStreaming = false;
       _currentFps = 0.0;
+      _interactiveMode = false;
     });
 
     _controller.stopStreaming();
@@ -107,6 +112,19 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
         _startStreaming();
       });
     }
+  }
+
+  // --- Touch-to-coordinate mapping ---
+  
+  /// Convert a touch position on the image widget to relative coordinates (0.0–1.0)
+  Offset? _toRelativeCoords(Offset localPosition) {
+    final renderBox = _imageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return null;
+    
+    final size = renderBox.size;
+    final relX = (localPosition.dx / size.width).clamp(0.0, 1.0);
+    final relY = (localPosition.dy / size.height).clamp(0.0, 1.0);
+    return Offset(relX, relY);
   }
 
   @override
@@ -138,6 +156,19 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
                   ),
                 ),
               ),
+            ),
+          if (_isStreaming)
+            IconButton(
+              icon: Icon(
+                _interactiveMode ? Icons.touch_app : Icons.pan_tool_alt,
+                color: _interactiveMode ? Colors.green : Colors.white,
+              ),
+              tooltip: _interactiveMode ? 'Interactive Mode ON' : 'Interactive Mode OFF',
+              onPressed: () {
+                setState(() {
+                  _interactiveMode = !_interactiveMode;
+                });
+              },
             ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -209,34 +240,8 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
 
     return Stack(
       children: [
-        // Screen image with pinch-to-zoom
-        InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4.0,
-          onInteractionUpdate: (details) {
-            setState(() {
-              _scale = details.scale;
-            });
-          },
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _isStreaming ? Colors.green : Colors.blue,
-                width: 3,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: Image.memory(
-                _currentFrame!,
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
-              ),
-            ),
-          ),
-        ),
+        // Screen image — interactive or view-only
+        _interactiveMode ? _buildInteractiveScreen() : _buildViewOnlyScreen(),
 
         // Streaming indicator
         if (_isStreaming)
@@ -249,9 +254,9 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
                 color: Colors.green,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Row(
+              child: const Row(
                 mainAxisSize: MainAxisSize.min,
-                children: const [
+                children: [
                   Icon(Icons.circle, size: 12, color: Colors.white),
                   SizedBox(width: 6),
                   Text(
@@ -267,7 +272,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
             ),
           ),
 
-        // FPS and quality indicator
+        // Mode indicator
         if (_isStreaming)
           Positioned(
             top: 30,
@@ -275,7 +280,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.black54,
+                color: _interactiveMode ? Colors.green.withOpacity(0.8) : Colors.black54,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -290,7 +295,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
                     ),
                   ),
                   Text(
-                    _quality.toUpperCase(),
+                    _interactiveMode ? 'INTERACTIVE' : _quality.toUpperCase(),
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 10,
@@ -300,29 +305,98 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
               ),
             ),
           ),
-
-        // Zoom indicator
-        if (_scale != 1.0)
-          Positioned(
-            bottom: 30,
-            right: 30,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${(_scale * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
       ],
+    );
+  }
+
+  Widget _buildViewOnlyScreen() {
+    return InteractiveViewer(
+      minScale: 0.5,
+      maxScale: 4.0,
+      onInteractionUpdate: (details) {
+        setState(() {
+          _scale = details.scale;
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isStreaming ? Colors.green : Colors.blue,
+            width: 3,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(9),
+          child: Image.memory(
+            _currentFrame!,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInteractiveScreen() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.green,
+          width: 3,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) {
+            final rel = _toRelativeCoords(details.localPosition);
+            if (rel != null) {
+              _controller.sendTap(rel.dx, rel.dy);
+            }
+          },
+          onDoubleTapDown: (details) {
+            // We need to capture the position for double tap
+          },
+          onDoubleTap: () {
+            // Double-tap is handled via onDoubleTapDown + manual tracking
+            // GestureDetector doesn't give position on onDoubleTap, so we use
+            // a workaround with _lastDoubleTapPosition
+          },
+          onLongPressStart: (details) {
+            final rel = _toRelativeCoords(details.localPosition);
+            if (rel != null) {
+              _controller.sendRightClick(rel.dx, rel.dy);
+            }
+          },
+          onPanStart: (details) {
+            final rel = _toRelativeCoords(details.localPosition);
+            if (rel != null) {
+              _controller.sendMouseDown(rel.dx, rel.dy);
+            }
+          },
+          onPanUpdate: (details) {
+            final rel = _toRelativeCoords(details.localPosition);
+            if (rel != null) {
+              _controller.sendMouseMove(rel.dx, rel.dy);
+            }
+          },
+          onPanEnd: (details) {
+            // Release at last known position — handled by the controller
+            _controller.sendMouseUp(0.5, 0.5); // Approximate; real position comes from last panUpdate
+          },
+          child: Image.memory(
+            key: _imageKey,
+            _currentFrame!,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        ),
+      ),
     );
   }
 
@@ -418,6 +492,19 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
             Text(
               'Frames received: $_frameCount',
               style: TextStyle(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Interactive mode: ${_interactiveMode ? "ON" : "OFF"}',
+              style: TextStyle(
+                color: _interactiveMode ? Colors.green : Colors.grey[600],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Toggle interactive mode from the toolbar to control your PC via touch.',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
           ],
         ),

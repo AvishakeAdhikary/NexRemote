@@ -2,6 +2,7 @@
 System Tray Icon
 Provides system tray integration for the application
 """
+import os
 from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -22,8 +23,10 @@ class TrayIcon(QObject):
         self.tray_icon = QSystemTrayIcon(parent)
         self.tray_icon.setToolTip("NexRemote")
         
-        # Set icon (you can add an actual icon file later)
-        # self.tray_icon.setIcon(QIcon('icon.png'))
+        # Set icon from shared assets
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'shared', 'assets', 'logo.png')
+        if os.path.exists(logo_path):
+            self.tray_icon.setIcon(QIcon(logo_path))
         
         self.create_menu()
         self.tray_icon.activated.connect(self.on_activated)

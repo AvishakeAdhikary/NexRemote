@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QApplication)
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QIcon, QAction
+import os
 from ui.settings_dialog import SettingsDialog
 from ui.connection_dialog import ConnectionApprovalDialog
 from ui.tray_icon import TrayIcon
@@ -26,6 +27,11 @@ class MainWindow(QMainWindow):
         
         self.setWindowTitle("NexRemote")
         self.setMinimumSize(600, 400)
+        
+        # Set window icon from shared assets
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'shared', 'assets', 'logo.png')
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
         
         # Connect signals
         self.server.client_connected.connect(self.on_client_connected)
@@ -150,21 +156,36 @@ class MainWindow(QMainWindow):
         )
     
     def quit_application(self):
-        """Quit the application"""
-        reply = QMessageBox.question(
-            self,
-            "Quit",
-            "Are you sure you want to quit?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        """Quit the application — no confirmation dialog for service-like behavior"""
+        import os
+        logger.info("Quit requested from tray/menu")
         
-        if reply == QMessageBox.StandardButton.Yes:
+        # Stop server
+        try:
             self.server.stop()
-            QApplication.quit()
+        except Exception as e:
+            logger.error(f"Error stopping server: {e}")
+        
+        # Hide tray icon
+        try:
+            self.tray.hide()
+        except Exception:
+            pass
+        
+        # Quit Qt
+        QApplication.quit()
+        
+        # Force exit after a short delay if Qt didn't close everything
+        import threading
+        def force_exit():
+            import time
+            time.sleep(3)
+            logger.warning("Force exiting — cleanup timeout")
+            os._exit(0)
+        threading.Thread(target=force_exit, daemon=True).start()
     
     def closeEvent(self, event):
-        """Handle window close event"""
-        # Minimize to tray instead of closing
+        """Handle window close event — minimize to tray"""
         event.ignore()
         self.hide()
         

@@ -318,7 +318,27 @@ class NexRemoteServer(QObject):
     def stop(self):
         """Stop the server"""
         self.running = False
-        self.discovery.stop()
+        
+        # Close all client connections
+        for client_id, ws in list(self.clients.items()):
+            try:
+                asyncio.ensure_future(ws.close())
+            except Exception:
+                pass
+        self.clients.clear()
+        
+        # Stop discovery service
+        try:
+            self.discovery.stop()
+        except Exception:
+            pass
+        
+        # Stop screen capture if running
+        try:
+            self.screen_capture.stop_streaming()
+        except Exception:
+            pass
+        
         logger.info("Server stopped")
     
     def handle_clipboard(self, data):
@@ -357,16 +377,89 @@ class NexRemoteServer(QObject):
                 display_index = data.get('display_index', 0)
                 await self.send_screen_frame(client_id)
             elif action == 'list_displays':
-                # Return list of available displays (placeholder for now)
+                # Return list of available displays
+                monitors = self.screen_capture.get_monitors()
+                display_list = []
+                for m in monitors:
+                    display_list.append({
+                        'index': m['id'] - 1,
+                        'name': f"Display {m['id']}",
+                        'width': m['width'],
+                        'height': m['height'],
+                    })
+                if not display_list:
+                    display_list = [{'index': 0, 'name': 'Primary Display', 'width': 1920, 'height': 1080}]
                 response = {
+                    'type': 'screen_share',
                     'action': 'display_list',
-                    'displays': [
-                        {'index': 0, 'name': 'Primary Display', 'width': 1920, 'height': 1080}
-                    ]
+                    'displays': display_list,
                 }
                 await self._send_response(client_id, response)
+            elif action == 'input':
+                # Handle touch-to-mouse input from screen share interactive mode
+                self._handle_screen_share_input(data)
         except Exception as e:
             logger.error(f"Error handling screen share: {e}", exc_info=True)
+    
+    def _handle_screen_share_input(self, data: dict):
+        """Handle touch input from screen share interactive mode — routes to VirtualMouse"""
+        try:
+            input_action = data.get('input_action')
+            
+            if input_action == 'click':
+                # Move to position first, then click
+                x = data.get('x', 0)
+                y = data.get('y', 0)
+                self.mouse.send_input({
+                    'action': 'move',
+                    'x': x,
+                    'y': y,
+                })
+                self.mouse.send_input({
+                    'action': 'click',
+                    'button': data.get('button', 'left'),
+                    'count': data.get('count', 1),
+                })
+            elif input_action == 'press':
+                x = data.get('x', 0)
+                y = data.get('y', 0)
+                self.mouse.send_input({
+                    'action': 'move',
+                    'x': x,
+                    'y': y,
+                })
+                self.mouse.send_input({
+                    'action': 'press',
+                    'button': data.get('button', 'left'),
+                })
+            elif input_action == 'release':
+                self.mouse.send_input({
+                    'action': 'release',
+                    'button': data.get('button', 'left'),
+                })
+            elif input_action == 'move':
+                x = data.get('x', 0)
+                y = data.get('y', 0)
+                self.mouse.send_input({
+                    'action': 'move',
+                    'x': x,
+                    'y': y,
+                })
+            elif input_action == 'scroll':
+                x = data.get('x', 0)
+                y = data.get('y', 0)
+                self.mouse.send_input({
+                    'action': 'move',
+                    'x': x,
+                    'y': y,
+                })
+                self.mouse.send_input({
+                    'action': 'scroll',
+                    'dx': data.get('dx', 0),
+                    'dy': data.get('dy', 0),
+                })
+        except Exception as e:
+            logger.error(f"Error handling screen share input: {e}", exc_info=True)
     
     async def _send_response(self, client_id: str, response: dict):
         """Send a response message to a specific client"""

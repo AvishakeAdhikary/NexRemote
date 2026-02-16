@@ -43,7 +43,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('NexRemote'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              '../shared/assets/logo.png',
+              width: 32,
+              height: 32,
+            ),
+            const SizedBox(width: 10),
+            const Text('NexRemote'),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -219,10 +230,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.computer,
-            size: 100,
-            color: Colors.grey[600],
+          Image.asset(
+            '../shared/assets/logo.png',
+            width: 120,
+            height: 120,
           ),
           const SizedBox(height: 24),
           Text(

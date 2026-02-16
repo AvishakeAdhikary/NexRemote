@@ -166,12 +166,19 @@ class ConnectionManager {
     try {
       String decrypted;
       
+      // Try to parse as plain JSON first (auth responses are sent unencrypted)
       if (message is String) {
-        decrypted = message;
-      } else {
-        decrypted = _encryption.decrypt(message);
+        try {
+          final data = jsonDecode(message) as Map<String, dynamic>;
+          messageController.add(data);
+          return;
+        } catch (_) {
+          // Not plain JSON — must be encrypted base64
+        }
       }
-
+      
+      // Decrypt the message (server encrypts all post-auth messages)
+      decrypted = _encryption.decrypt(message);
       final data = jsonDecode(decrypted) as Map<String, dynamic>;
       messageController.add(data);
     } catch (e) {

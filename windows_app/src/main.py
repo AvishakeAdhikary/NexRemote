@@ -3,7 +3,10 @@ NexRemote - Windows Application
 Main entry point
 """
 import sys
+import os
 import asyncio
+import signal
+import atexit
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QThread
 from ui.main_window import MainWindow
@@ -19,10 +22,30 @@ class ServerThread(QThread):
     def __init__(self, server):
         super().__init__()
         self.server = server
+        self.loop = None
         
     def run(self):
         """Run the asyncio event loop"""
-        asyncio.run(self.server.start())
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_until_complete(self.server.start())
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Cancel all remaining tasks
+            pending = asyncio.all_tasks(self.loop)
+            for task in pending:
+                task.cancel()
+            # Let cancelled tasks finish
+            if pending:
+                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            self.loop.close()
+    
+    def stop(self):
+        """Stop the asyncio event loop from another thread"""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
 
 def main():
     """Application entry point"""
@@ -31,6 +54,9 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName("NexRemote")
         app.setOrganizationName("NeuralNexusStudios")
+        
+        # Prevent Qt from keeping the app alive if all windows are hidden
+        app.setQuitOnLastWindowClosed(False)
         
         # Load configuration
         config = Config()
@@ -53,20 +79,28 @@ def main():
         
         logger.info("Application started successfully")
         
+        # Register cleanup
+        def cleanup():
+            logger.info("Shutting down...")
+            server.stop()
+            server_thread.stop()
+            server_thread.quit()
+            if not server_thread.wait(5000):  # 5 second timeout
+                logger.warning("Server thread did not stop in time, terminating")
+                server_thread.terminate()
+                server_thread.wait(2000)
+        
+        atexit.register(cleanup)
+        app.aboutToQuit.connect(cleanup)
+        
         # Execute application
         exit_code = app.exec()
-        
-        # Cleanup
-        logger.info("Shutting down...")
-        server.stop()
-        server_thread.quit()
-        server_thread.wait()
         
         sys.exit(exit_code)
         
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
-        sys.exit(1)
+        os._exit(1)
 
 if __name__ == "__main__":
     main()

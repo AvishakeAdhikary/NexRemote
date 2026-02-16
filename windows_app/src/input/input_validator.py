@@ -6,7 +6,9 @@ class InputValidator:
     def __init__(self):
         self.valid_types = {
             'keyboard', 'mouse', 'gamepad', 'clipboard',
-            'request_screen', 'file_transfer'
+            'request_screen', 'file_transfer',
+            'screen_share', 'media_control', 'task_manager',
+            'camera', 'sensor'
         }
         
         self.rate_limits = {}
