@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'dart:async';
+import 'dart:typed_data';
 import '../core/connection_manager.dart';
-import '../input/camera_controller.dart' as cam_ctrl;
+import '../input/camera_controller.dart';
 
 class CameraScreen extends StatefulWidget {
   final ConnectionManager connectionManager;
@@ -17,79 +17,57 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  late cam_ctrl.CameraController _cameraController;
-  CameraController? _camera;
-  List<CameraDescription> _cameras = [];
+  late CameraController _cameraController;
+  Uint8List? _currentFrame;
+  List<Map<String, dynamic>> _cameras = [];
   int _selectedCameraIndex = 0;
   bool _isStreaming = false;
-  bool _isInitializing = false;
-  Timer? _frameTimer;
-  String _resolution = 'Medium';
-  int _frameRate = 15;
+  bool _isLoading = true;
+  Map<String, dynamic>? _cameraInfo;
+  DateTime? _lastFrameTime;
+  double _currentFps = 0.0;
+
+  StreamSubscription? _frameSub;
+  StreamSubscription? _cameraListSub;
+  StreamSubscription? _cameraInfoSub;
 
   @override
   void initState() {
     super.initState();
-    _cameraController = cam_ctrl.CameraController(widget.connectionManager);
-    _initializeCameras();
-  }
+    _cameraController = CameraController(widget.connectionManager);
 
-  Future<void> _initializeCameras() async {
-    try {
-      _cameras = await availableCameras();
-      if (_cameras.isNotEmpty) {
-        await _initializeCamera(_selectedCameraIndex);
-      }
-    } catch (e) {
-      _showError('Failed to initialize cameras: $e');
-    }
-  }
-
-  Future<void> _initializeCamera(int cameraIndex) async {
-    if (_isInitializing) return;
-
-    setState(() {
-      _isInitializing = true;
+    // Listen for frames
+    _frameSub = _cameraController.frameStream.listen((bytes) {
+      setState(() {
+        _currentFrame = bytes;
+        final now = DateTime.now();
+        if (_lastFrameTime != null) {
+          final diff = now.difference(_lastFrameTime!).inMilliseconds;
+          if (diff > 0) {
+            _currentFps = 1000 / diff;
+          }
+        }
+        _lastFrameTime = now;
+      });
     });
 
-    try {
-      // Dispose previous camera
-      await _camera?.dispose();
-
-      // Initialize new camera
-      _camera = CameraController(
-        _cameras[cameraIndex],
-        _getResolutionPreset(),
-        enableAudio: false,
-      );
-
-      await _camera!.initialize();
-
-      if (mounted) {
-        setState(() {
-          _selectedCameraIndex = cameraIndex;
-          _isInitializing = false;
-        });
-      }
-    } catch (e) {
-      _showError('Failed to initialize camera: $e');
+    // Listen for camera list
+    _cameraListSub = _cameraController.cameraListStream.listen((cameras) {
       setState(() {
-        _isInitializing = false;
+        _cameras = cameras;
+        _isLoading = false;
       });
-    }
-  }
+    });
 
-  ResolutionPreset _getResolutionPreset() {
-    switch (_resolution) {
-      case 'Low':
-        return ResolutionPreset.low;
-      case 'Medium':
-        return ResolutionPreset.medium;
-      case 'High':
-        return ResolutionPreset.high;
-      default:
-        return ResolutionPreset.medium;
-    }
+    // Listen for camera info
+    _cameraInfoSub = _cameraController.cameraInfoStream.listen((info) {
+      setState(() {
+        _cameraInfo = info;
+      });
+    });
+
+    // Request camera list
+    _cameraController.requestCameraList();
   }
 
   void _toggleStreaming() {
@@ -101,8 +79,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _startStreaming() {
-    if (_camera == null || !_camera!.value.isInitialized) {
-      _showError('Camera not initialized');
+    if (_cameras.isEmpty) {
+      _showError('No cameras available');
       return;
     }
 
@@ -110,46 +88,28 @@ class _CameraScreenState extends State<CameraScreen> {
       _isStreaming = true;
     });
 
-    _cameraController.startStreaming();
-
-    // Start sending frames at specified frame rate
-    final interval = Duration(milliseconds: (1000 / _frameRate).round());
-    _frameTimer = Timer.periodic(interval, (timer) async {
-      if (_camera != null && _camera!.value.isInitialized && _isStreaming) {
-        try {
-          final image = await _camera!.takePicture();
-          final bytes = await image.readAsBytes();
-          _cameraController.sendFrame(bytes);
-        } catch (e) {
-          // Ignore frame capture errors
-        }
-      }
-    });
+    _cameraController.startStreaming(cameraIndex: _selectedCameraIndex);
   }
 
   void _stopStreaming() {
-    _frameTimer?.cancel();
-    _frameTimer = null;
+    _cameraController.stopStreaming();
 
     setState(() {
       _isStreaming = false;
+      _currentFrame = null;
+      _currentFps = 0.0;
     });
-
-    _cameraController.stopStreaming();
   }
 
-  void _switchCamera(int index) async {
+  void _switchCamera(int index) {
     if (index == _selectedCameraIndex) return;
 
-    final wasStreaming = _isStreaming;
-    if (wasStreaming) {
-      _stopStreaming();
-    }
+    setState(() {
+      _selectedCameraIndex = index;
+    });
 
-    await _initializeCamera(index);
-
-    if (wasStreaming) {
-      _startStreaming();
+    if (_isStreaming) {
+      _cameraController.setCamera(index);
     }
   }
 
@@ -179,16 +139,13 @@ class _CameraScreenState extends State<CameraScreen> {
                   value: index,
                   child: Row(
                     children: [
-                      Icon(
-                        _cameras[index].lensDirection == CameraLensDirection.front
-                            ? Icons.camera_front
-                            : Icons.camera_rear,
-                      ),
+                      const Icon(Icons.videocam),
                       const SizedBox(width: 8),
-                      Text(
-                        _cameras[index].lensDirection == CameraLensDirection.front
-                            ? 'Front Camera'
-                            : 'Rear Camera',
+                      Expanded(
+                        child: Text(
+                          _cameras[index]['name'] ?? 'Camera $index',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       if (index == _selectedCameraIndex)
                         const Padding(
@@ -200,6 +157,14 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
             ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              setState(() => _isLoading = true);
+              _cameraController.requestCameraList();
+            },
+            tooltip: 'Refresh cameras',
+          ),
         ],
       ),
       body: SafeArea(
@@ -219,30 +184,53 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _buildCameraPreview() {
-    if (_isInitializing) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
 
-    if (_camera == null || !_camera!.value.isInitialized) {
+    if (_cameras.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.camera_alt,
-              size: 100,
-              color: Colors.grey[600],
-            ),
+            Icon(Icons.videocam_off, size: 100, color: Colors.grey[600]),
             const SizedBox(height: 24),
             Text(
-              'Camera not available',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[400],
-              ),
+              'No cameras found on PC',
+              style: TextStyle(fontSize: 18, color: Colors.grey[400]),
             ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() => _isLoading = true);
+                _cameraController.requestCameraList();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!_isStreaming || _currentFrame == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.videocam, size: 100, color: Colors.grey[600]),
+            const SizedBox(height: 24),
+            Text(
+              _isStreaming ? 'Waiting for frames...' : 'Camera ready',
+              style: TextStyle(fontSize: 18, color: Colors.grey[400]),
+            ),
+            if (_cameras.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _cameras[_selectedCameraIndex]['name'] ?? 'Camera $_selectedCameraIndex',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              ),
+            ],
           ],
         ),
       );
@@ -251,55 +239,77 @@ class _CameraScreenState extends State<CameraScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
+        // Camera feed
         Container(
           margin: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _isStreaming ? Colors.green : Colors.blue,
-              width: 3,
-            ),
+            border: Border.all(color: Colors.green, width: 3),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(9),
-            child: CameraPreview(_camera!),
+            child: Image.memory(
+              _currentFrame!,
+              fit: BoxFit.contain,
+              gaplessPlayback: true, // Prevents flicker between frames
+            ),
           ),
         ),
 
         // Streaming indicator
-        if (_isStreaming)
-          Positioned(
-            top: 30,
-            left: 30,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.red,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.fiber_manual_record, size: 12, color: Colors.white),
-                  SizedBox(width: 6),
-                  Text(
-                    'STREAMING',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+        Positioned(
+          top: 30,
+          left: 30,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.fiber_manual_record, size: 12, color: Colors.white),
+                SizedBox(width: 6),
+                Text(
+                  'LIVE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // FPS and info overlay
+        Positioned(
+          top: 30,
+          right: 30,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '${_currentFps.toStringAsFixed(1)} FPS',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
               ),
             ),
           ),
+        ),
 
-        // Frame rate indicator
-        if (_isStreaming)
+        // Resolution info
+        if (_cameraInfo != null)
           Positioned(
-            top: 30,
-            right: 30,
+            bottom: 30,
+            left: 30,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
@@ -307,11 +317,10 @@ class _CameraScreenState extends State<CameraScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                '$_frameRate FPS',
+                '${_cameraInfo!['width'] ?? '?'}×${_cameraInfo!['height'] ?? '?'} @ ${_cameraInfo!['fps'] ?? '?'} fps',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+                  color: Colors.white70,
+                  fontSize: 11,
                 ),
               ),
             ),
@@ -331,71 +340,63 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
       child: Column(
         children: [
-          // Resolution selector
-          Row(
-            children: [
-              const Icon(Icons.high_quality, size: 20, color: Colors.blue),
-              const SizedBox(width: 12),
-              const Text('Resolution:'),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'Low', label: Text('Low')),
-                    ButtonSegment(value: 'Medium', label: Text('Med')),
-                    ButtonSegment(value: 'High', label: Text('High')),
-                  ],
-                  selected: {_resolution},
-                  onSelectionChanged: (Set<String> selected) async {
-                    if (!_isStreaming) {
-                      setState(() {
-                        _resolution = selected.first;
-                      });
-                      await _initializeCamera(_selectedCameraIndex);
-                    }
-                  },
-                ),
+          // Camera selector
+          if (_cameras.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.videocam, size: 20, color: Colors.blue),
+                  const SizedBox(width: 12),
+                  const Text('Camera:', style: TextStyle(color: Colors.white)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButton<int>(
+                      value: _selectedCameraIndex,
+                      isExpanded: true,
+                      dropdownColor: Colors.grey[800],
+                      items: List.generate(
+                        _cameras.length,
+                        (i) => DropdownMenuItem(
+                          value: i,
+                          child: Text(
+                            _cameras[i]['name'] ?? 'Camera $i',
+                            style: const TextStyle(color: Colors.white),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        if (val != null) _switchCamera(val);
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
 
-          const SizedBox(height: 12),
-
-          // Frame rate selector
-          Row(
-            children: [
-              const Icon(Icons.speed, size: 20, color: Colors.blue),
-              const SizedBox(width: 12),
-              const Text('FPS:'),
-              Expanded(
-                child: Slider(
-                  value: _frameRate.toDouble(),
-                  min: 5,
-                  max: 30,
-                  divisions: 5,
-                  label: '$_frameRate',
-                  onChanged: _isStreaming
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _frameRate = value.round();
-                          });
-                        },
-                ),
+          // Camera native info
+          if (_cameraInfo != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 20, color: Colors.blue),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Native: ${_cameraInfo!['width']}×${_cameraInfo!['height']} @ ${_cameraInfo!['fps']} fps',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  ),
+                ],
               ),
-              Text('$_frameRate'),
-              const SizedBox(width: 8),
-            ],
-          ),
-
-          const SizedBox(height: 12),
+            ),
 
           // Start/Stop button
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: _camera?.value.isInitialized == true ? _toggleStreaming : null,
+              onPressed: _cameras.isEmpty ? null : _toggleStreaming,
               icon: Icon(_isStreaming ? Icons.stop : Icons.play_arrow),
               label: Text(
                 _isStreaming ? 'Stop Streaming' : 'Start Streaming',
@@ -414,8 +415,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _stopStreaming();
-    _camera?.dispose();
+    _frameSub?.cancel();
+    _cameraListSub?.cancel();
+    _cameraInfoSub?.cancel();
     _cameraController.dispose();
     super.dispose();
   }

@@ -1,6 +1,7 @@
 """
 WebSocket Server with TLS support
-Handles multiple client connections
+Handles multiple client connections with concurrent message processing.
+Uses binary WebSocket frames for high-performance screen/camera streaming.
 """
 import asyncio
 import websockets
@@ -20,13 +21,18 @@ from input.virtual_gamepad import VirtualGamepad
 from input.media_controller import MediaController
 from input.input_validator import InputValidator
 from streaming.screen_capture import ScreenCapture
-from streaming.virtual_camera import VirtualCamera
+from streaming.camera_streamer import CameraStreamer
 from ui.file_explorer import FileExplorer
 from ui.task_manager import TaskManager
 from utils.logger import get_logger
 from utils.protocol import MessageHandler
 
 logger = get_logger(__name__)
+
+# Binary frame headers (4 bytes)
+SCREEN_HEADER = b'SCRN'
+CAMERA_HEADER = b'CAMF'
+
 
 class NexRemoteServer(QObject):
     """Main server handling all client connections"""
@@ -57,9 +63,9 @@ class NexRemoteServer(QObject):
         self.gamepad = VirtualGamepad()
         self.media_controller = MediaController()
         
-        # Streaming and camera
+        # Streaming
         self.screen_capture = ScreenCapture(config)
-        self.virtual_camera = VirtualCamera(config)
+        self.camera_streamer = CameraStreamer(config)
         
         # File system and process management
         self.file_explorer = FileExplorer(config)
@@ -68,12 +74,19 @@ class NexRemoteServer(QObject):
         # Active connections
         self.clients: Dict[str, websockets.WebSocketServerProtocol] = {}
         
+        # Active streaming tasks per client
+        self._screen_stream_tasks: Dict[str, asyncio.Task] = {}
+        self._camera_stream_tasks: Dict[str, asyncio.Task] = {}
+        
         logger.info("Server initialized")
     
     async def start(self):
         """Start the server(s)"""
         try:
             self.running = True
+            
+            # Start the screen capture thread (always running — low cost when idle)
+            self.screen_capture.start()
             
             # Start discovery service
             asyncio.create_task(self.discovery.start(self._on_discovery_request))
@@ -100,7 +113,7 @@ class NexRemoteServer(QObject):
                 "0.0.0.0",
                 port,
                 ssl=ssl_context,
-                max_size=10 * 1024 * 1024,  # 10MB max message size
+                max_size=50 * 1024 * 1024,  # 50 MB for binary frames
                 ping_interval=20,
                 ping_timeout=10
             ):
@@ -110,7 +123,7 @@ class NexRemoteServer(QObject):
             logger.error(f"Secure server error: {e}", exc_info=True)
     
     async def start_non_secure_server(self):
-        """Start non-secure WebSocket server (WS) for local development"""
+        """Start non-secure WebSocket server (WS)"""
         try:
             port = self.config.get('server_port_insecure', 8766)
             
@@ -118,8 +131,8 @@ class NexRemoteServer(QObject):
                 self.handle_client,
                 "0.0.0.0",
                 port,
-                ssl=None,  # No SSL for local development
-                max_size=10 * 1024 * 1024,
+                ssl=None,
+                max_size=50 * 1024 * 1024,  # 50 MB for binary frames
                 ping_interval=20,
                 ping_timeout=10
             ):
@@ -177,9 +190,9 @@ class NexRemoteServer(QObject):
             
             logger.info(f"Client connected: {device_name} ({client_id})")
             
-            # Handle messages
+            # Handle messages — dispatch each to its own task for concurrency
             async for message in websocket:
-                await self.process_message(client_id, message)
+                asyncio.create_task(self._safe_process(client_id, message))
                 
         except asyncio.TimeoutError:
             logger.warning("Client authentication timeout")
@@ -188,33 +201,34 @@ class NexRemoteServer(QObject):
         except Exception as e:
             logger.error(f"Error handling client: {e}", exc_info=True)
         finally:
-            # Cleanup
+            # Cleanup: stop streaming for this client
+            self._stop_client_streams(client_id)
+            
             if client_id and client_id in self.clients:
                 del self.clients[client_id]
                 self.client_disconnected.emit(client_id)
                 self.audit_logger.log_event("client_disconnected", {"client_id": client_id})
     
-    async def process_message(self, client_id: str, message: bytes):
-        """Process incoming message from client"""
-        msg_type = 'unknown'  # Initialize for error handling
+    async def _safe_process(self, client_id: str, message):
+        """Wrapper to catch exceptions in create_task'd message processing"""
+        try:
+            await self.process_message(client_id, message)
+        except Exception as e:
+            logger.error(f"Unhandled error processing message from {client_id}: {e}", exc_info=True)
+    
+    async def process_message(self, client_id: str, message):
+        """Process incoming message from client (runs as independent task)"""
+        msg_type = 'unknown'
         try:
             # Decrypt message
             decrypted = self.encryption.decrypt(message)
-            
-            # Debug: Log the decrypted data
-            logger.info(f"Decrypted data length: {len(decrypted)}")
-            logger.info(f"Decrypted data (first 200 chars): {decrypted[:200]}")
-            logger.info(f"Decrypted data repr: {repr(decrypted[:200])}")
-            
             data = json.loads(decrypted)
             
             msg_type = data.get('type', 'unknown')
-            logger.info(f"Received message type: {msg_type} from {client_id}")
             
             # Validate input
             if not self.input_validator.validate(data):
                 logger.warning(f"Invalid message from {client_id}: {msg_type}")
-                self.audit_logger.log_event("invalid_message", {"client_id": client_id, "type": msg_type})
                 return
             
             # Route to appropriate handler
@@ -225,19 +239,19 @@ class NexRemoteServer(QObject):
             elif msg_type == 'gamepad':
                 self.gamepad.send_input(data)
             elif msg_type == 'camera':
-                self._handle_camera(data)
+                await self._handle_camera(client_id, data)
             elif msg_type == 'file_explorer':
-                response = self.file_explorer.handle_request(data)
+                # Offload blocking I/O to thread pool
+                response = await asyncio.to_thread(self.file_explorer.handle_request, data)
                 await self._send_response(client_id, response)
             elif msg_type == 'screen_share':
                 await self._handle_screen_share(client_id, data)
             elif msg_type == 'media_control':
                 self.media_controller.send_command(data)
             elif msg_type == 'task_manager':
-                response = self.task_manager.handle_request(data)
+                # Offload blocking psutil calls to thread pool
+                response = await asyncio.to_thread(self.task_manager.handle_request, data)
                 await self._send_response(client_id, response)
-            elif msg_type == 'request_screen':
-                await self.send_screen_frame(client_id)
             elif msg_type == 'clipboard':
                 self.handle_clipboard(data)
             else:
@@ -246,46 +260,263 @@ class NexRemoteServer(QObject):
             # Emit signal (may fail if no UI connected)
             try:
                 self.message_received.emit(client_id, data)
-            except Exception as emit_error:
-                logger.debug(f"Signal emit warning (non-critical): {emit_error}")
+            except Exception:
+                pass
             
-        except AttributeError as e:
-            logger.error(f"Handler attribute error for message type '{msg_type}': {e}", exc_info=True)
         except Exception as e:
-            logger.error(f"Error processing message type '{msg_type}': {type(e).__name__}: {e}", exc_info=True)
+            logger.error(f"Error processing message type '{msg_type}': {type(e).__name__}: {e}")
+    
+    # ─── Screen Share (push-model binary streaming) ────────────────────
+    
+    async def _handle_screen_share(self, client_id: str, data: dict):
+        """Handle screen share requests"""
+        try:
+            action = data.get('action')
+            
+            if action == 'start':
+                # Start push-model streaming for this client
+                fps = data.get('fps', 30)
+                quality = data.get('quality', 70)
+                resolution = data.get('resolution', 'native')
+                display_index = data.get('display_index', 0)
+                
+                self.screen_capture.set_fps(fps)
+                self.screen_capture.set_quality(quality)
+                self.screen_capture.set_resolution(resolution)
+                if display_index > 0:
+                    self.screen_capture.set_monitor(display_index + 1)
+                
+                # Cancel any existing stream task for this client
+                if client_id in self._screen_stream_tasks:
+                    self._screen_stream_tasks[client_id].cancel()
+                
+                # Launch push loop
+                task = asyncio.create_task(self._screen_push_loop(client_id, fps))
+                self._screen_stream_tasks[client_id] = task
+                logger.info(f"Screen streaming started for {client_id} ({resolution}, {fps}fps, q{quality})")
+                
+            elif action == 'stop':
+                if client_id in self._screen_stream_tasks:
+                    self._screen_stream_tasks[client_id].cancel()
+                    del self._screen_stream_tasks[client_id]
+                logger.info(f"Screen streaming stopped for {client_id}")
+                
+            elif action == 'set_quality':
+                self.screen_capture.set_quality(data.get('quality', 70))
+                
+            elif action == 'set_resolution':
+                self.screen_capture.set_resolution(data.get('resolution', 'native'))
+                
+            elif action == 'set_fps':
+                new_fps = data.get('fps', 30)
+                self.screen_capture.set_fps(new_fps)
+                # Restart push loop with new FPS
+                if client_id in self._screen_stream_tasks:
+                    self._screen_stream_tasks[client_id].cancel()
+                    task = asyncio.create_task(self._screen_push_loop(client_id, new_fps))
+                    self._screen_stream_tasks[client_id] = task
+                    
+            elif action == 'set_monitor':
+                self.screen_capture.set_monitor(data.get('monitor_index', 1))
+                
+            elif action == 'list_displays':
+                monitors = await asyncio.to_thread(self.screen_capture.get_monitors)
+                display_list = []
+                for m in monitors:
+                    display_list.append({
+                        'index': m['id'] - 1,
+                        'name': f"Display {m['id']}",
+                        'width': m['width'],
+                        'height': m['height'],
+                    })
+                if not display_list:
+                    display_list = [{'index': 0, 'name': 'Primary Display', 'width': 1920, 'height': 1080}]
+                info = self.screen_capture.get_frame_info()
+                response = {
+                    'type': 'screen_share',
+                    'action': 'display_list',
+                    'displays': display_list,
+                    'current_resolution': info['resolution'],
+                    'current_fps': info['fps'],
+                    'current_quality': info['quality'],
+                }
+                await self._send_response(client_id, response)
+                
+            elif action == 'input':
+                # Touch-to-mouse input (fast path — no thread offload needed)
+                self._handle_screen_share_input(data)
+                
+        except Exception as e:
+            logger.error(f"Error handling screen share: {e}", exc_info=True)
+    
+    async def _screen_push_loop(self, client_id: str, fps: int):
+        """Continuously push screen frames to client as binary messages"""
+        interval = 1.0 / max(1, fps)
+        logger.debug(f"Screen push loop started for {client_id} ({fps} fps)")
+        
+        try:
+            while client_id in self.clients:
+                start = asyncio.get_event_loop().time()
+                
+                # Get latest frame from the capture thread (non-blocking read)
+                frame = self.screen_capture.get_latest_frame()
+                
+                if frame and client_id in self.clients:
+                    try:
+                        # Send as binary: SCRN header + JPEG bytes
+                        await self.clients[client_id].send(SCREEN_HEADER + frame)
+                    except websockets.exceptions.ConnectionClosed:
+                        break
+                    except Exception as e:
+                        logger.error(f"Error sending screen frame: {e}")
+                        break
+                
+                # Pace to target FPS
+                elapsed = asyncio.get_event_loop().time() - start
+                sleep_time = interval - elapsed
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+                else:
+                    await asyncio.sleep(0)  # Yield to event loop
+                    
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Screen push loop error: {e}", exc_info=True)
+        finally:
+            logger.debug(f"Screen push loop ended for {client_id}")
+    
+    # ─── Camera (server→client streaming) ──────────────────────────────
+    
+    async def _handle_camera(self, client_id: str, data: dict):
+        """Handle camera requests — stream FROM PC cameras TO client"""
+        try:
+            action = data.get('action')
+            
+            if action == 'list_cameras':
+                cameras = await asyncio.to_thread(self.camera_streamer.list_cameras)
+                response = {
+                    'type': 'camera',
+                    'action': 'camera_list',
+                    'cameras': cameras,
+                }
+                await self._send_response(client_id, response)
+                
+            elif action == 'start':
+                camera_index = data.get('camera_index', 0)
+                
+                # Start camera capture thread
+                await asyncio.to_thread(self.camera_streamer.start, camera_index)
+                
+                # Cancel any existing camera stream for this client
+                if client_id in self._camera_stream_tasks:
+                    self._camera_stream_tasks[client_id].cancel()
+                
+                # Launch push loop
+                task = asyncio.create_task(self._camera_push_loop(client_id))
+                self._camera_stream_tasks[client_id] = task
+                
+                # Send camera info back
+                info = self.camera_streamer.get_camera_info()
+                response = {
+                    'type': 'camera',
+                    'action': 'started',
+                    'camera_info': info,
+                }
+                await self._send_response(client_id, response)
+                logger.info(f"Camera streaming started for {client_id} (camera {camera_index})")
+                
+            elif action == 'stop':
+                if client_id in self._camera_stream_tasks:
+                    self._camera_stream_tasks[client_id].cancel()
+                    del self._camera_stream_tasks[client_id]
+                await asyncio.to_thread(self.camera_streamer.stop)
+                logger.info(f"Camera streaming stopped for {client_id}")
+                
+            elif action == 'set_camera':
+                camera_index = data.get('camera_index', 0)
+                # Restart with new camera
+                was_streaming = client_id in self._camera_stream_tasks
+                if was_streaming:
+                    self._camera_stream_tasks[client_id].cancel()
+                
+                await asyncio.to_thread(self.camera_streamer.start, camera_index)
+                
+                if was_streaming:
+                    task = asyncio.create_task(self._camera_push_loop(client_id))
+                    self._camera_stream_tasks[client_id] = task
+                
+                info = self.camera_streamer.get_camera_info()
+                response = {
+                    'type': 'camera',
+                    'action': 'camera_changed',
+                    'camera_info': info,
+                }
+                await self._send_response(client_id, response)
+                
+        except Exception as e:
+            logger.error(f"Error handling camera: {e}", exc_info=True)
+    
+    async def _camera_push_loop(self, client_id: str):
+        """Push camera frames to client as binary messages"""
+        logger.debug(f"Camera push loop started for {client_id}")
+        
+        try:
+            while client_id in self.clients and self.camera_streamer.is_active:
+                start = asyncio.get_event_loop().time()
+                
+                frame = self.camera_streamer.get_latest_frame()
+                
+                if frame and client_id in self.clients:
+                    try:
+                        # Send as binary: CAMF header + JPEG bytes
+                        await self.clients[client_id].send(CAMERA_HEADER + frame)
+                    except websockets.exceptions.ConnectionClosed:
+                        break
+                    except Exception as e:
+                        logger.error(f"Error sending camera frame: {e}")
+                        break
+                
+                # Pace to camera FPS
+                info = self.camera_streamer.get_camera_info()
+                fps = info.get('fps', 30) or 30
+                interval = 1.0 / fps
+                elapsed = asyncio.get_event_loop().time() - start
+                sleep_time = interval - elapsed
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+                else:
+                    await asyncio.sleep(0)
+                    
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Camera push loop error: {e}", exc_info=True)
+        finally:
+            logger.debug(f"Camera push loop ended for {client_id}")
+    
+    # ─── Utility ───────────────────────────────────────────────────────
+    
+    def _stop_client_streams(self, client_id: str):
+        """Cancel all streaming tasks for a client"""
+        if client_id and client_id in self._screen_stream_tasks:
+            self._screen_stream_tasks[client_id].cancel()
+            del self._screen_stream_tasks[client_id]
+        if client_id and client_id in self._camera_stream_tasks:
+            self._camera_stream_tasks[client_id].cancel()
+            del self._camera_stream_tasks[client_id]
     
     async def _send_response(self, client_id: str, response: dict):
-        """Send an encrypted response back to a specific client"""
+        """Send an encrypted JSON response back to a specific client"""
         try:
             if client_id not in self.clients:
-                logger.warning(f"Client {client_id} not found for response")
                 return
             
             message = json.dumps(response)
             encrypted = self.encryption.encrypt(message)
             await self.clients[client_id].send(encrypted)
-            logger.debug(f"Sent response to {client_id}: {response.get('type', '?')}/{response.get('action', '?')}")
         except Exception as e:
             logger.error(f"Error sending response to {client_id}: {e}")
-    
-    async def send_screen_frame(self, client_id: str):
-        """Send screen frame to client"""
-        try:
-            if client_id not in self.clients:
-                return
-            
-            frame = self.screen_capture.capture_frame()
-            
-            message = json.dumps({
-                "type": "screen_frame",
-                "data": frame
-            })
-            
-            encrypted = self.encryption.encrypt(message)
-            await self.clients[client_id].send(encrypted)
-            
-        except Exception as e:
-            logger.error(f"Error sending screen frame: {e}")
     
     async def broadcast(self, message: dict, exclude: Set[str] = None):
         """Broadcast message to all connected clients"""
@@ -312,7 +543,7 @@ class NexRemoteServer(QObject):
             "mouse": True,
             "gamepad": True,
             "screen_streaming": True,
-            "virtual_camera": True,
+            "camera_streaming": True,
             "file_transfer": True,
             "clipboard": True,
             "multi_display": True
@@ -333,6 +564,15 @@ class NexRemoteServer(QObject):
         """Stop the server"""
         self.running = False
         
+        # Cancel all streaming tasks
+        for task in list(self._screen_stream_tasks.values()):
+            task.cancel()
+        self._screen_stream_tasks.clear()
+        
+        for task in list(self._camera_stream_tasks.values()):
+            task.cancel()
+        self._camera_stream_tasks.clear()
+        
         # Close all client connections
         for client_id, ws in list(self.clients.items()):
             try:
@@ -347,9 +587,13 @@ class NexRemoteServer(QObject):
         except Exception:
             pass
         
-        # Stop screen capture if running
+        # Stop capture threads
         try:
-            self.screen_capture.stop_streaming()
+            self.screen_capture.stop()
+        except Exception:
+            pass
+        try:
+            self.camera_streamer.stop()
         except Exception:
             pass
         
@@ -357,63 +601,7 @@ class NexRemoteServer(QObject):
     
     def handle_clipboard(self, data):
         """Handle clipboard sync"""
-        # Implementation for clipboard handling
         pass
-    
-    def _handle_camera(self, data: dict):
-        """Handle camera-related messages"""
-        try:
-            action = data.get('action')
-            
-            if action == 'start':
-                self.virtual_camera.start_virtual_camera()
-                logger.info("Virtual camera started")
-            elif action == 'stop':
-                self.virtual_camera.stop_virtual_camera()
-                logger.info("Virtual camera stopped")
-            elif action == 'frame':
-                frame_data = data.get('data')
-                if frame_data:
-                    self.virtual_camera.receive_frame(frame_data)
-        except Exception as e:
-            logger.error(f"Error handling camera: {e}", exc_info=True)
-    
-    async def _handle_screen_share(self, client_id: str, data: dict):
-        """Handle screen share requests"""
-        try:
-            action = data.get('action')
-            
-            if action == 'start':
-                logger.info(f"Screen sharing started for client {client_id}")
-            elif action == 'stop':
-                logger.info(f"Screen sharing stopped for client {client_id}")
-            elif action == 'request_frame':
-                display_index = data.get('display_index', 0)
-                await self.send_screen_frame(client_id)
-            elif action == 'list_displays':
-                # Return list of available displays
-                monitors = self.screen_capture.get_monitors()
-                display_list = []
-                for m in monitors:
-                    display_list.append({
-                        'index': m['id'] - 1,
-                        'name': f"Display {m['id']}",
-                        'width': m['width'],
-                        'height': m['height'],
-                    })
-                if not display_list:
-                    display_list = [{'index': 0, 'name': 'Primary Display', 'width': 1920, 'height': 1080}]
-                response = {
-                    'type': 'screen_share',
-                    'action': 'display_list',
-                    'displays': display_list,
-                }
-                await self._send_response(client_id, response)
-            elif action == 'input':
-                # Handle touch-to-mouse input from screen share interactive mode
-                self._handle_screen_share_input(data)
-        except Exception as e:
-            logger.error(f"Error handling screen share: {e}", exc_info=True)
     
     def _handle_screen_share_input(self, data: dict):
         """Handle touch input from screen share interactive mode — routes to VirtualMouse"""
@@ -421,7 +609,6 @@ class NexRemoteServer(QObject):
             input_action = data.get('input_action')
             
             if input_action == 'click':
-                # Move to position first, then click
                 x = data.get('x', 0)
                 y = data.get('y', 0)
                 self.mouse.send_input({
@@ -474,17 +661,3 @@ class NexRemoteServer(QObject):
                 })
         except Exception as e:
             logger.error(f"Error handling screen share input: {e}", exc_info=True)
-    
-    async def _send_response(self, client_id: str, response: dict):
-        """Send a response message to a specific client"""
-        try:
-            if client_id not in self.clients:
-                logger.warning(f"Cannot send response to disconnected client {client_id}")
-                return
-            
-            message = json.dumps(response)
-            encrypted = self.encryption.encrypt(message)
-            await self.clients[client_id].send(encrypted)
-            
-        except Exception as e:
-            logger.error(f"Error sending response to {client_id}: {e}", exc_info=True)

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import '../security/encryption.dart';
@@ -21,6 +22,10 @@ class ConnectionManager {
   StreamController<Map<String, dynamic>> messageController =
       StreamController<Map<String, dynamic>>.broadcast();
 
+  /// Stream for raw binary frames (screen capture, camera)
+  StreamController<Uint8List> binaryMessageController =
+      StreamController<Uint8List>.broadcast();
+
   final MessageEncryption _encryption = MessageEncryption();
   
   ConnectionState _state = ConnectionState.disconnected;
@@ -33,6 +38,9 @@ class ConnectionManager {
   Stream<String> get connectedDeviceStream =>
       connectedDeviceController.stream;
   Stream<Map<String, dynamic>> get messageStream => messageController.stream;
+
+  /// Binary frame stream — screen/camera controllers listen to this
+  Stream<Uint8List> get binaryMessageStream => binaryMessageController.stream;
 
   ConnectionState get state => _state;
   bool get isConnected => _state == ConnectionState.connected;
@@ -164,10 +172,16 @@ class ConnectionManager {
 
   void _handleMessage(dynamic message) {
     try {
-      String decrypted;
-      
-      // Try to parse as plain JSON first (auth responses are sent unencrypted)
+      // Handle binary messages (screen/camera frames)
+      if (message is List<int>) {
+        final bytes = Uint8List.fromList(message);
+        binaryMessageController.add(bytes);
+        return;
+      }
+
+      // Handle text messages
       if (message is String) {
+        // Try to parse as plain JSON first (auth responses are sent unencrypted)
         try {
           final data = jsonDecode(message) as Map<String, dynamic>;
           messageController.add(data);
@@ -178,7 +192,7 @@ class ConnectionManager {
       }
       
       // Decrypt the message (server encrypts all post-auth messages)
-      decrypted = _encryption.decrypt(message);
+      final decrypted = _encryption.decrypt(message);
       final data = jsonDecode(decrypted) as Map<String, dynamic>;
       messageController.add(data);
     } catch (e) {
@@ -231,5 +245,6 @@ class ConnectionManager {
     connectionStateController.close();
     connectedDeviceController.close();
     messageController.close();
+    binaryMessageController.close();
   }
 }

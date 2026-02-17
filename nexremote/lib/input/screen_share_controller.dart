@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
+/// 4-byte binary header for screen frames
+const _screenHeader = [0x53, 0x43, 0x52, 0x4E]; // "SCRN"
+
 class ScreenShareController {
   final ConnectionManager connectionManager;
   final StreamController<Uint8List> _frameController =
@@ -11,41 +14,105 @@ class ScreenShareController {
   final StreamController<List<Map<String, dynamic>>> _displaysController =
       StreamController<List<Map<String, dynamic>>>.broadcast();
 
+  StreamSubscription? _binarySubscription;
+  StreamSubscription? _jsonSubscription;
+
   Stream<Uint8List> get frameStream => _frameController.stream;
   Stream<List<Map<String, dynamic>>> get displaysStream => _displaysController.stream;
 
   bool isStreaming = false;
-  Timer? _refreshTimer;
 
   // Screen dimensions reported by the server (for coordinate mapping)
   int _serverScreenWidth = 1920;
   int _serverScreenHeight = 1080;
 
-  ScreenShareController(this.connectionManager);
+  // Current settings
+  int currentFps = 30;
+  String currentResolution = 'native';
+  int currentQuality = 70;
 
-  void startStreaming({int displayIndex = 0, int fps = 10, String quality = 'medium'}) {
+  ScreenShareController(this.connectionManager) {
+    // Listen for binary frames (SCRN header)
+    _binarySubscription = connectionManager.binaryMessageStream.listen((bytes) {
+      if (bytes.length > 4 && _matchesHeader(bytes, _screenHeader)) {
+        // Strip the 4-byte header, pass JPEG bytes
+        _frameController.add(bytes.sublist(4));
+      }
+    });
+
+    // Listen for JSON messages (display_list, etc.)
+    _jsonSubscription = connectionManager.messageStream.listen((data) {
+      if (data['type'] == 'screen_share') {
+        final action = data['action'];
+        if (action == 'display_list') {
+          final displays = List<Map<String, dynamic>>.from(data['displays'] ?? []);
+          _displaysController.add(displays);
+
+          // Update settings from server
+          if (data['current_fps'] != null) currentFps = data['current_fps'];
+          if (data['current_quality'] != null) currentQuality = data['current_quality'];
+          if (data['current_resolution'] != null) currentResolution = data['current_resolution'];
+
+          // Update server screen dimensions from the selected display
+          if (displays.isNotEmpty) {
+            _serverScreenWidth = displays[0]['width'] ?? 1920;
+            _serverScreenHeight = displays[0]['height'] ?? 1080;
+          }
+        }
+      }
+    });
+  }
+
+  bool _matchesHeader(Uint8List bytes, List<int> header) {
+    for (int i = 0; i < header.length; i++) {
+      if (bytes[i] != header[i]) return false;
+    }
+    return true;
+  }
+
+  void startStreaming({
+    int displayIndex = 0,
+    int fps = 30,
+    String quality = 'medium',
+    String resolution = 'native',
+  }) {
     isStreaming = true;
+
+    // Map quality name to value
+    int qualityValue;
+    switch (quality) {
+      case 'low':
+        qualityValue = 30;
+        break;
+      case 'medium':
+        qualityValue = 50;
+        break;
+      case 'high':
+        qualityValue = 70;
+        break;
+      case 'ultra':
+        qualityValue = 90;
+        break;
+      default:
+        qualityValue = 50;
+    }
+
+    currentFps = fps;
+    currentQuality = qualityValue;
+    currentResolution = resolution;
 
     connectionManager.sendMessage({
       'type': 'screen_share',
       'action': 'start',
       'display_index': displayIndex,
-      'quality': quality,
-    });
-
-    // Request frames at specified FPS
-    final interval = Duration(milliseconds: (1000 / fps).round());
-    _refreshTimer = Timer.periodic(interval, (timer) {
-      if (isStreaming) {
-        requestFrame(displayIndex);
-      }
+      'fps': fps,
+      'quality': qualityValue,
+      'resolution': resolution,
     });
   }
 
   void stopStreaming() {
     isStreaming = false;
-    _refreshTimer?.cancel();
-    _refreshTimer = null;
 
     connectionManager.sendMessage({
       'type': 'screen_share',
@@ -53,11 +120,38 @@ class ScreenShareController {
     });
   }
 
-  void requestFrame(int displayIndex) {
+  void setFps(int fps) {
+    currentFps = fps;
     connectionManager.sendMessage({
       'type': 'screen_share',
-      'action': 'request_frame',
-      'display_index': displayIndex,
+      'action': 'set_fps',
+      'fps': fps,
+    });
+  }
+
+  void setQuality(int quality) {
+    currentQuality = quality;
+    connectionManager.sendMessage({
+      'type': 'screen_share',
+      'action': 'set_quality',
+      'quality': quality,
+    });
+  }
+
+  void setResolution(String resolution) {
+    currentResolution = resolution;
+    connectionManager.sendMessage({
+      'type': 'screen_share',
+      'action': 'set_resolution',
+      'resolution': resolution,
+    });
+  }
+
+  void setMonitor(int monitorIndex) {
+    connectionManager.sendMessage({
+      'type': 'screen_share',
+      'action': 'set_monitor',
+      'monitor_index': monitorIndex,
     });
   }
 
@@ -70,8 +164,6 @@ class ScreenShareController {
 
   // --- Touch-to-mouse input methods ---
 
-  /// Send a tap (left click) at the given screen-relative position.
-  /// [relX] and [relY] are 0.0–1.0 fractions of the displayed image.
   void sendTap(double relX, double relY) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -86,7 +178,6 @@ class ScreenShareController {
     });
   }
 
-  /// Send a double-tap (double click) at the given position.
   void sendDoubleTap(double relX, double relY) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -101,7 +192,6 @@ class ScreenShareController {
     });
   }
 
-  /// Send a right-click (long press) at the given position.
   void sendRightClick(double relX, double relY) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -116,7 +206,6 @@ class ScreenShareController {
     });
   }
 
-  /// Send mouse-down (start drag) at the given position.
   void sendMouseDown(double relX, double relY) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -130,7 +219,6 @@ class ScreenShareController {
     });
   }
 
-  /// Send mouse-move (during drag) to absolute position.
   void sendMouseMove(double relX, double relY) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -143,7 +231,6 @@ class ScreenShareController {
     });
   }
 
-  /// Send mouse-up (end drag) at the given position.
   void sendMouseUp(double relX, double relY) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -157,7 +244,6 @@ class ScreenShareController {
     });
   }
 
-  /// Send scroll at the given position.
   void sendScroll(double relX, double relY, double scrollDx, double scrollDy) {
     final x = (relX * _serverScreenWidth).round();
     final y = (relY * _serverScreenHeight).round();
@@ -172,28 +258,6 @@ class ScreenShareController {
     });
   }
 
-  void handleFrame(String base64Data) {
-    try {
-      final bytes = base64Decode(base64Data);
-      _frameController.add(bytes);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error decoding frame: $e');
-      }
-    }
-  }
-
-  void handleDisplayList(List<dynamic> displays) {
-    final parsed = displays.map((d) => Map<String, dynamic>.from(d)).toList();
-    _displaysController.add(parsed);
-    
-    // Update server screen dimensions from the selected display
-    if (parsed.isNotEmpty) {
-      _serverScreenWidth = parsed[0]['width'] ?? 1920;
-      _serverScreenHeight = parsed[0]['height'] ?? 1080;
-    }
-  }
-
   void updateServerScreenSize(int width, int height) {
     _serverScreenWidth = width;
     _serverScreenHeight = height;
@@ -201,6 +265,8 @@ class ScreenShareController {
 
   void dispose() {
     stopStreaming();
+    _binarySubscription?.cancel();
+    _jsonSubscription?.cancel();
     _frameController.close();
     _displaysController.close();
   }

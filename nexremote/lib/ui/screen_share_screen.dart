@@ -22,8 +22,9 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   List<Map<String, dynamic>> _displays = [];
   int _selectedDisplay = 0;
   bool _isStreaming = false;
-  int _fps = 10;
+  int _fps = 30;
   String _quality = 'medium';
+  String _resolution = 'native';
   double _scale = 1.0;
   int _frameCount = 0;
   DateTime? _lastFrameTime;
@@ -33,16 +34,19 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   // For coordinate mapping
   final GlobalKey _imageKey = GlobalKey();
 
+  StreamSubscription? _frameSub;
+  StreamSubscription? _displaysSub;
+
   @override
   void initState() {
     super.initState();
     _controller = ScreenShareController(widget.connectionManager);
-    
-    _controller.frameStream.listen((bytes) {
+
+    _frameSub = _controller.frameStream.listen((bytes) {
       setState(() {
         _currentFrame = bytes;
         _frameCount++;
-        
+
         // Calculate actual FPS
         final now = DateTime.now();
         if (_lastFrameTime != null) {
@@ -55,7 +59,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
       });
     });
 
-    _controller.displaysStream.listen((displays) {
+    _displaysSub = _controller.displaysStream.listen((displays) {
       setState(() {
         _displays = displays;
       });
@@ -82,6 +86,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
       displayIndex: _selectedDisplay,
       fps: _fps,
       quality: _quality,
+      resolution: _resolution,
     );
   }
 
@@ -115,12 +120,11 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   }
 
   // --- Touch-to-coordinate mapping ---
-  
-  /// Convert a touch position on the image widget to relative coordinates (0.0–1.0)
+
   Offset? _toRelativeCoords(Offset localPosition) {
     final renderBox = _imageKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return null;
-    
+
     final size = renderBox.size;
     final relX = (localPosition.dx / size.width).clamp(0.0, 1.0);
     final relY = (localPosition.dy / size.height).clamp(0.0, 1.0);
@@ -198,11 +202,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.screen_share,
-              size: 100,
-              color: Colors.grey[600],
-            ),
+            Icon(Icons.screen_share, size: 100, color: Colors.grey[600]),
             const SizedBox(height: 24),
             Text(
               'Not Streaming',
@@ -215,10 +215,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
             const SizedBox(height: 12),
             Text(
               'Tap "Start Streaming" to view PC screen',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[500],
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey[500]),
             ),
           ],
         ),
@@ -262,9 +259,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
                   Text(
                     'LIVE',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12,
                     ),
                   ),
                 ],
@@ -272,7 +267,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
             ),
           ),
 
-        // Mode indicator
+        // FPS + resolution + mode overlay
         if (_isStreaming)
           Positioned(
             top: 30,
@@ -289,17 +284,14 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
                   Text(
                     '${_currentFps.toStringAsFixed(1)} FPS',
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12,
                     ),
                   ),
                   Text(
-                    _interactiveMode ? 'INTERACTIVE' : _quality.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10,
-                    ),
+                    _interactiveMode
+                        ? 'INTERACTIVE'
+                        : '${_resolution.toUpperCase()} · ${_quality.toUpperCase()}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 10),
                   ),
                 ],
               ),
@@ -344,10 +336,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.green,
-          width: 3,
-        ),
+        border: Border.all(color: Colors.green, width: 3),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(9),
@@ -355,39 +344,22 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
           behavior: HitTestBehavior.opaque,
           onTapUp: (details) {
             final rel = _toRelativeCoords(details.localPosition);
-            if (rel != null) {
-              _controller.sendTap(rel.dx, rel.dy);
-            }
-          },
-          onDoubleTapDown: (details) {
-            // We need to capture the position for double tap
-          },
-          onDoubleTap: () {
-            // Double-tap is handled via onDoubleTapDown + manual tracking
-            // GestureDetector doesn't give position on onDoubleTap, so we use
-            // a workaround with _lastDoubleTapPosition
+            if (rel != null) _controller.sendTap(rel.dx, rel.dy);
           },
           onLongPressStart: (details) {
             final rel = _toRelativeCoords(details.localPosition);
-            if (rel != null) {
-              _controller.sendRightClick(rel.dx, rel.dy);
-            }
+            if (rel != null) _controller.sendRightClick(rel.dx, rel.dy);
           },
           onPanStart: (details) {
             final rel = _toRelativeCoords(details.localPosition);
-            if (rel != null) {
-              _controller.sendMouseDown(rel.dx, rel.dy);
-            }
+            if (rel != null) _controller.sendMouseDown(rel.dx, rel.dy);
           },
           onPanUpdate: (details) {
             final rel = _toRelativeCoords(details.localPosition);
-            if (rel != null) {
-              _controller.sendMouseMove(rel.dx, rel.dy);
-            }
+            if (rel != null) _controller.sendMouseMove(rel.dx, rel.dy);
           },
           onPanEnd: (details) {
-            // Release at last known position — handled by the controller
-            _controller.sendMouseUp(0.5, 0.5); // Approximate; real position comes from last panUpdate
+            _controller.sendMouseUp(0.5, 0.5);
           },
           child: Image.memory(
             key: _imageKey,
@@ -411,7 +383,77 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
       ),
       child: Column(
         children: [
-          // FPS control
+          // Resolution selector — changeable while streaming
+          Row(
+            children: [
+              const Icon(Icons.aspect_ratio, size: 20, color: Colors.blue),
+              const SizedBox(width: 12),
+              const Text('Res:'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'native', label: Text('Native')),
+                    ButtonSegment(value: '1080p', label: Text('1080p')),
+                    ButtonSegment(value: '720p', label: Text('720p')),
+                    ButtonSegment(value: '480p', label: Text('480p')),
+                  ],
+                  selected: {_resolution},
+                  onSelectionChanged: (Set<String> selected) {
+                    setState(() {
+                      _resolution = selected.first;
+                    });
+                    if (_isStreaming) {
+                      _controller.setResolution(_resolution);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // Quality selector — changeable while streaming
+          Row(
+            children: [
+              const Icon(Icons.high_quality, size: 20, color: Colors.blue),
+              const SizedBox(width: 12),
+              const Text('Quality:'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'low', label: Text('Low')),
+                    ButtonSegment(value: 'medium', label: Text('Med')),
+                    ButtonSegment(value: 'high', label: Text('High')),
+                    ButtonSegment(value: 'ultra', label: Text('Ultra')),
+                  ],
+                  selected: {_quality},
+                  onSelectionChanged: (Set<String> selected) {
+                    setState(() {
+                      _quality = selected.first;
+                    });
+                    if (_isStreaming) {
+                      int qualityValue;
+                      switch (_quality) {
+                        case 'low': qualityValue = 30; break;
+                        case 'medium': qualityValue = 50; break;
+                        case 'high': qualityValue = 70; break;
+                        case 'ultra': qualityValue = 90; break;
+                        default: qualityValue = 50;
+                      }
+                      _controller.setQuality(qualityValue);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // FPS slider — changeable while streaming
           Row(
             children: [
               const Icon(Icons.speed, size: 20, color: Colors.blue),
@@ -421,19 +463,25 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
                 child: Slider(
                   value: _fps.toDouble(),
                   min: 5,
-                  max: 30,
-                  divisions: 5,
+                  max: 60,
+                  divisions: 11,
                   label: '$_fps',
-                  onChanged: _isStreaming
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _fps = value.round();
-                          });
-                        },
+                  onChanged: (value) {
+                    setState(() {
+                      _fps = value.round();
+                    });
+                  },
+                  onChangeEnd: (value) {
+                    if (_isStreaming) {
+                      _controller.setFps(value.round());
+                    }
+                  },
                 ),
               ),
-              Text('$_fps'),
+              SizedBox(
+                width: 30,
+                child: Text('$_fps', textAlign: TextAlign.center),
+              ),
               const SizedBox(width: 8),
             ],
           ),
@@ -471,29 +519,18 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Quality:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('Frames received: $_frameCount',
+                style: TextStyle(color: Colors.grey[600])),
             const SizedBox(height: 8),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'low', label: Text('Low')),
-                ButtonSegment(value: 'medium', label: Text('Medium')),
-                ButtonSegment(value: 'high', label: Text('High')),
-              ],
-              selected: {_quality},
-              onSelectionChanged: (Set<String> selected) {
-                if (!_isStreaming) {
-                  setState(() {
-                    _quality = selected.first;
-                  });
-                }
-              },
-            ),
+            Text('Current FPS: ${_currentFps.toStringAsFixed(1)}',
+                style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 8),
+            Text('Resolution: ${_resolution.toUpperCase()}',
+                style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 8),
+            Text('Quality: ${_quality.toUpperCase()}',
+                style: TextStyle(color: Colors.grey[600])),
             const SizedBox(height: 16),
-            Text(
-              'Frames received: $_frameCount',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
             Text(
               'Interactive mode: ${_interactiveMode ? "ON" : "OFF"}',
               style: TextStyle(
@@ -520,6 +557,8 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
 
   @override
   void dispose() {
+    _frameSub?.cancel();
+    _displaysSub?.cancel();
     _controller.dispose();
     super.dispose();
   }
