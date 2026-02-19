@@ -21,6 +21,12 @@ dependencies = [
     "pyperclip>=1.11.0",
     "pyqt6>=6.10.2",
     "pywin32>=311; platform_system=='Windows'",
+    "qrcode[pil]>=8.2",
     "vgamepad>=0.1.0",
     "websockets>=16.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
 ]

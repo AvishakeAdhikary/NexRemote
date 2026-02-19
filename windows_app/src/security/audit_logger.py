@@ -1,13 +1,12 @@
 import json
 from datetime import datetime
-from pathlib import Path
+from utils.paths import get_log_dir
 
 class AuditLogger:
     """Security audit logger"""
     
     def __init__(self, config):
-        self.log_file = Path(config.get('data_dir')) / 'logs' / 'audit.log'
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.log_file = get_log_dir() / 'audit.log'
     
     def log_event(self, event_type: str, data: dict):
         """Log security event"""

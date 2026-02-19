@@ -1,0 +1,116 @@
+name: NexRemote CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Windows Executable ──
+  build-windows:
+    name: Build Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        working-directory: windows_app/src
+        run: uv sync
+
+      - name: Build executable
+        working-directory: windows_app/src
+        run: |
+          uv run python -m PyInstaller `
+            --name "NexRemote" `
+            --icon "assets/images/logo.ico" `
+            --windowed `
+            --onefile `
+            --add-data "assets;assets" `
+            --noconfirm `
+            main.py
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexRemote-Windows
+          path: windows_app/src/dist/NexRemote.exe
+          retention-days: 30
+
+  # ── Android APK ──
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Get dependencies
+        working-directory: nexremote
+        run: flutter pub get
+
+      - name: Run analyzer
+        working-directory: nexremote
+        run: flutter analyze --no-fatal-infos
+
+      - name: Build APK
+        working-directory: nexremote
+        run: flutter build apk --release
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexRemote-Android
+          path: nexremote/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+  # ── Release ──
+  release:
+    name: Create Release
+    needs: [build-windows, build-android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NexRemote-Windows
+          path: ./release
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NexRemote-Android
+          path: ./release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/NexRemote.exe
+            release/app-release.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false

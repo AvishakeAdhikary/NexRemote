@@ -1,5 +1,5 @@
 name: nexremote
-description: "A new Flutter project."
+description: "NexRemote — Control your PC from your phone. By Neural Nexus Studios."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -51,6 +51,7 @@ dependencies:
   video_player: ^2.10.1
   intl: ^0.20.2
   uuid: ^4.5.2
+  mobile_scanner: ^7.2.0
 
 dev_dependencies:
   flutter_test:

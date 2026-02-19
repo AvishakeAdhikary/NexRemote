@@ -1,4 +1,4 @@
-package com.example.nexremote
+package com.neuralnexusstudios.nexremote
 
 import io.flutter.embedding.android.FlutterActivity
 

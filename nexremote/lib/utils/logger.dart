@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart' as log;
 import 'package:path_provider/path_provider.dart';
 
@@ -14,10 +15,12 @@ class Logger {
     try {
       final outputs = <log.LogOutput>[log.ConsoleOutput()];
 
-      // 1. App documents directory logging (on device/app storage)
-      final docsDir = await getApplicationDocumentsDirectory();
-      final appLogDir = Directory('${docsDir.path}/logs');
-      
+      // Production logging: app support directory (internal app storage)
+      // Android: /data/data/com.neuralnexusstudios.nexremote/files
+      // This is the standard location for app-internal files
+      final supportDir = await getApplicationSupportDirectory();
+      final appLogDir = Directory('${supportDir.path}/logs');
+
       if (!await appLogDir.exists()) {
         await appLogDir.create(recursive: true);
       }
@@ -29,23 +32,23 @@ class Logger {
         maxBackupFileLength: 10,
       ));
 
-      // 2. Project directory logging (for development access)
-      // This allows easy access to logs from your development machine
-      try {
-        final projectLogDir = Directory('C:/Projects/NexRemote/logs');
-        if (!await projectLogDir.exists()) {
-          await projectLogDir.create(recursive: true);
-        }
+      // Dev-only: also log to the project directory for easy access
+      if (kDebugMode) {
+        try {
+          final projectLogDir = Directory('C:/Projects/NexRemote/logs');
+          if (!await projectLogDir.exists()) {
+            await projectLogDir.create(recursive: true);
+          }
 
-        final projectLogFile = File('${projectLogDir.path}/nexremote_dev.log');
-        outputs.add(AdvancedFileOutput(
-          path: projectLogFile.path,
-          maxFileSizeKB: 10 * 1024, // 10 MB
-          maxBackupFileLength: 10,
-        ));
-      } catch (e) {
-        // Project directory logging is optional - ignore if it fails
-        // (e.g., when running on physical device without access to dev machine)
+          final projectLogFile = File('${projectLogDir.path}/nexremote_dev.log');
+          outputs.add(AdvancedFileOutput(
+            path: projectLogFile.path,
+            maxFileSizeKB: 10 * 1024, // 10 MB
+            maxBackupFileLength: 10,
+          ));
+        } catch (e) {
+          // Dev directory logging is optional — ignore on physical devices
+        }
       }
 
       // Initialize logger with custom output
@@ -63,7 +66,7 @@ class Logger {
       );
 
       _initialized = true;
-      info('Logger initialized - logging to app: ${appLogFile.path}');
+      info('Logger initialized - logging to: ${appLogFile.path}');
     } catch (e) {
       // Fallback to console-only logger if file setup fails
       _logger = log.Logger(
@@ -140,7 +143,7 @@ class AdvancedFileOutput extends log.LogOutput {
           '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}';
       
       // Remove ANSI color codes for file output
-      final cleanLine = line.replaceAll(RegExp(r'\x1B\[[0-9;]*m'), '');
+      final cleanLine = line.replaceAll(RegExp(r'\\x1B\\[[0-9;]*m'), '');
       _sink!.writeln('$formattedTime | $cleanLine');
     }
 

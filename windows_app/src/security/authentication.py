@@ -1,8 +1,8 @@
 import hashlib
 import json
 import time
-from pathlib import Path
 from typing import Dict
+from utils.paths import get_data_dir
 
 class DeviceAuthenticator:
     """Device authentication manager"""
@@ -13,7 +13,7 @@ class DeviceAuthenticator:
     
     def _load_trusted_devices(self) -> Dict[str, dict]:
         """Load trusted devices from storage"""
-        devices_file = Path(self.config.get('data_dir')) / 'trusted_devices.json'
+        devices_file = get_data_dir() / 'trusted_devices.json'
         if devices_file.exists():
             with open(devices_file, 'r') as f:
                 return json.load(f)
@@ -21,7 +21,7 @@ class DeviceAuthenticator:
     
     def _save_trusted_devices(self):
         """Save trusted devices"""
-        devices_file = Path(self.config.get('data_dir')) / 'trusted_devices.json'
+        devices_file = get_data_dir() / 'trusted_devices.json'
         devices_file.parent.mkdir(parents=True, exist_ok=True)
         with open(devices_file, 'w') as f:
             json.dump(self.trusted_devices, f, indent=2)

@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from datetime import datetime, timedelta
 from utils.logger import get_logger
+from utils.paths import get_certs_dir
 
 logger = get_logger(__name__)
 
@@ -21,8 +22,7 @@ class CertificateManager:
     
     def __init__(self, config):
         self.config = config
-        self.cert_dir = Path(config.get('data_dir', '.')) / 'certs'
-        self.cert_dir.mkdir(parents=True, exist_ok=True)
+        self.cert_dir = get_certs_dir()
         
         self.cert_file = self.cert_dir / 'server.crt'
         self.key_file = self.cert_dir / 'server.key'
