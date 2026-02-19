@@ -6,10 +6,8 @@ The server runs in a background thread and can be started/stopped from the UI.
 import sys
 import os
 import ctypes
-import asyncio
 import atexit
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QThread
 from PyQt6.QtGui import QIcon
 from utils.paths import get_assets_dir, is_frozen
 
@@ -25,44 +23,12 @@ if sys.platform == 'win32':
 
 from ui.main_window import MainWindow
 from core.server import NexRemoteServer
+from core.server_thread import ServerThread
 from utils.logger import setup_logger
 from utils.config import Config
 from security.firewall_config import configure_firewall
 
 logger = setup_logger()
-
-
-class ServerThread(QThread):
-    """Thread to run async server. Owned by MainWindow for start/stop control."""
-
-    def __init__(self, server):
-        super().__init__()
-        self.server = server
-        self.loop = None
-
-    def run(self):
-        """Run the asyncio event loop"""
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        try:
-            self.loop.run_until_complete(self.server.start())
-        except asyncio.CancelledError:
-            pass
-        finally:
-            # Cancel all remaining tasks
-            pending = asyncio.all_tasks(self.loop)
-            for task in pending:
-                task.cancel()
-            if pending:
-                self.loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-            self.loop.close()
-
-    def stop(self):
-        """Stop the asyncio event loop from another thread"""
-        if self.loop and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self.loop.stop)
 
 
 def main():
@@ -108,24 +74,36 @@ def main():
 
         logger.info("Application started successfully")
 
-        # Register cleanup for any running server
+        # One-shot cleanup guard: prevents double-call from atexit + aboutToQuit.
+        # Note: we delegate to main_window (which always has the CURRENT server_thread)
+        # because _stop_server() recreates the thread on each stop, making any direct
+        # reference to server_thread in this closure go stale.
+        _cleaned_up = False
+
         def cleanup():
+            nonlocal _cleaned_up
+            if _cleaned_up:
+                return
+            _cleaned_up = True
+
             logger.info("Shutting down...")
-            if server_thread.isRunning():
-                server.stop()
-                server_thread.stop()
-                server_thread.quit()
-                if not server_thread.wait(5000):
-                    logger.warning("Server thread did not stop in time, terminating")
-                    server_thread.terminate()
-                    server_thread.wait(2000)
+            try:
+                if main_window._server_running:
+                    main_window._stop_server()
+            except RuntimeError:
+                # Qt C++ objects already deleted — nothing we can do
+                pass
+            except Exception as e:
+                logger.warning(f"Cleanup warning (non-fatal): {e}")
 
-        atexit.register(cleanup)
+        # aboutToQuit fires when QApplication.quit() is called (e.g., from tray Quit)
         app.aboutToQuit.connect(cleanup)
+        # atexit fires after app.exec() returns — acts as a safety net for abnormal exits
+        atexit.register(cleanup)
 
-        # Execute application
+        # Execute application — returns exit code when tray Quit is triggered
         exit_code = app.exec()
-        sys.exit(exit_code)
+        return exit_code
 
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
@@ -133,4 +111,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

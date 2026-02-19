@@ -30,6 +30,7 @@ class _CameraScreenState extends State<CameraScreen> {
   StreamSubscription? _frameSub;
   StreamSubscription? _cameraListSub;
   StreamSubscription? _cameraInfoSub;
+  Timer? _loadingTimeoutTimer;
 
   @override
   void initState() {
@@ -67,7 +68,20 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     // Request camera list
+    _requestCameraList();
+  }
+
+  void _requestCameraList() {
+    setState(() => _isLoading = true);
     _cameraController.requestCameraList();
+
+    // Timeout: clear loading after 5s if server doesn't respond
+    _loadingTimeoutTimer?.cancel();
+    _loadingTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted && _isLoading) {
+        setState(() => _isLoading = false);
+      }
+    });
   }
 
   void _toggleStreaming() {
@@ -160,8 +174,7 @@ class _CameraScreenState extends State<CameraScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              setState(() => _isLoading = true);
-              _cameraController.requestCameraList();
+              _requestCameraList();
             },
             tooltip: 'Refresh cameras',
           ),
@@ -202,8 +215,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () {
-                setState(() => _isLoading = true);
-                _cameraController.requestCameraList();
+                _requestCameraList();
               },
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
@@ -415,6 +427,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _loadingTimeoutTimer?.cancel();
     _frameSub?.cancel();
     _cameraListSub?.cancel();
     _cameraInfoSub?.cancel();

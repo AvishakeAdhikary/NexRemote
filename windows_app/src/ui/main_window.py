@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
 
             # Recreate server + thread for next start
             from core.server import NexRemoteServer
-            from main import ServerThread
+            from core.server_thread import ServerThread
             self.server = NexRemoteServer(self.config)
             self.server.client_connected.connect(self.on_client_connected)
             self.server.client_disconnected.connect(self.on_client_disconnected)
