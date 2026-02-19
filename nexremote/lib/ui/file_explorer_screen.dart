@@ -22,6 +22,7 @@ class _FileExplorerScreenState extends State<FileExplorerScreen> {
   List<Map<String, dynamic>> _files = [];
   List<String> _pathHistory = ['C:\\'];
   bool _isLoading = false;
+  Timer? _loadingTimeoutTimer;
   final TextEditingController _searchController = TextEditingController();
 
   // Clipboard for copy/paste
@@ -85,6 +86,20 @@ class _FileExplorerScreenState extends State<FileExplorerScreen> {
     });
     _controller.requestDirectoryList(path);
     _searchController.clear();
+
+    // Timeout: clear loading after 5s if server hasn't responded
+    _loadingTimeoutTimer?.cancel();
+    _loadingTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted && _isLoading) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Server took too long to respond'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    });
   }
 
   void _navigateToPath(String path) {

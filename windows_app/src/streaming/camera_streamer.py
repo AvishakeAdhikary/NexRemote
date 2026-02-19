@@ -41,34 +41,39 @@ class CameraStreamer:
     def list_cameras(self) -> list:
         """Enumerate available cameras on the system"""
         cameras = []
-        for i in range(5):  # Check indices 0-4
-            try:
-                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-                if cap.isOpened():
-                    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    if fps <= 0:
-                        fps = 30.0
 
-                    # Try to get camera name via backend
-                    name = f"Camera {i}"
-                    backend = cap.getBackendName()
-                    if backend:
-                        name = f"Camera {i} ({backend})"
+        # Suppress OpenCV's verbose DSHOW backend warnings during probing
+        original_log_level = cv2.getLogLevel()
+        cv2.setLogLevel(3)  # 3 = ERROR only (suppresses WARN)
 
-                    cameras.append({
-                        'index': i,
-                        'name': name,
-                        'width': w,
-                        'height': h,
-                        'fps': round(fps, 1),
-                    })
+        try:
+            for i in range(5):  # Check indices 0-4
+                try:
+                    cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                    if cap.isOpened():
+                        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        fps = cap.get(cv2.CAP_PROP_FPS)
+                        if fps <= 0:
+                            fps = 30.0
+
+                        name = f"Camera {i}"
+                        backend = cap.getBackendName()
+                        if backend:
+                            name = f"Camera {i} ({backend})"
+
+                        cameras.append({
+                            'index': i,
+                            'name': name,
+                            'width': w,
+                            'height': h,
+                            'fps': round(fps, 1),
+                        })
                     cap.release()
-                else:
-                    cap.release()
-            except Exception:
-                pass
+                except Exception:
+                    pass
+        finally:
+            cv2.setLogLevel(original_log_level)  # Always restore
 
         logger.info(f"Found {len(cameras)} camera(s)")
         return cameras

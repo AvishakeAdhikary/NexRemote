@@ -72,27 +72,29 @@ class MediaController:
     def _set_volume(self, volume: int):
         """Set system volume (0-100) using pycaw or fallback to volume keys"""
         try:
-            # Try pycaw for precise control
             from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
             from comtypes import CLSCTX_ALL
             from ctypes import cast, POINTER
-            
+
+            # GetSpeakers() returns an AudioDevice wrapper.
+            # Access the underlying COM IMMDevice via ._dev before calling Activate().
             devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            interface = devices._dev.Activate(
+                IAudioEndpointVolume._iid_, CLSCTX_ALL, None
+            )
             volume_interface = cast(interface, POINTER(IAudioEndpointVolume))
-            
-            # pycaw volume is in dB scale, use scalar (0.0 to 1.0)
+
             scalar = max(0.0, min(1.0, volume / 100.0))
             volume_interface.SetMasterVolumeLevelScalar(scalar, None)
-            logger.info(f"Volume set to {volume}% (scalar: {scalar})")
-            
+            logger.info(f"Volume set to {volume}% via pycaw")
+
         except ImportError:
-            # Fallback: use volume keys to approximate
             logger.warning("pycaw not available, using volume key fallback")
             self._volume_key_fallback(volume)
         except Exception as e:
             logger.error(f"Error setting volume: {e}")
             self._volume_key_fallback(volume)
+
     
     def _volume_key_fallback(self, target_volume: int):
         """Approximate volume control using volume up/down keys"""
@@ -139,7 +141,9 @@ class MediaController:
             from ctypes import cast, POINTER
             
             devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            interface = devices._dev.Activate(
+                IAudioEndpointVolume._iid_, CLSCTX_ALL, None
+            )
             volume_interface = cast(interface, POINTER(IAudioEndpointVolume))
             
             current_volume = volume_interface.GetMasterVolumeLevelScalar()

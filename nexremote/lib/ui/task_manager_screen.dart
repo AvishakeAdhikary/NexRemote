@@ -21,6 +21,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
   Map<String, dynamic> _systemInfo = {};
   bool _isLoading = false;
   Timer? _refreshTimer;
+  Timer? _loadingTimeoutTimer;
   String _sortBy = 'name';
   bool _sortAscending = true;
   final TextEditingController _searchController = TextEditingController();
@@ -63,13 +64,25 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
   }
 
   void _loadProcessList() {
-    if (!_isLoading) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
+    setState(() {
+      _isLoading = true;
+    });
     _controller.requestProcessList();
     _controller.requestSystemInfo();
+
+    // Clear loading state after 5s if no response
+    _loadingTimeoutTimer?.cancel();
+    _loadingTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted && _isLoading) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Server took too long to respond'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    });
   }
 
   void _sortProcesses() {
@@ -394,6 +407,7 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _loadingTimeoutTimer?.cancel();
     _controller.dispose();
     _searchController.dispose();
     super.dispose();

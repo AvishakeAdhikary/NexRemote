@@ -514,14 +514,23 @@ class NexRemoteServer(QObject):
             
             message = json.dumps(response)
             encrypted = self.encryption.encrypt(message)
+            # IMPORTANT: encrypted is bytes (base64). Decode to str so websockets
+            # sends a text frame, not binary. Flutter routes binary frames to
+            # binaryMessageController (screen/camera), not messageController.
+            if isinstance(encrypted, bytes):
+                encrypted = encrypted.decode('utf-8')
             await self.clients[client_id].send(encrypted)
         except Exception as e:
             logger.error(f"Error sending response to {client_id}: {e}")
+
     
     async def broadcast(self, message: dict, exclude: Set[str] = None):
         """Broadcast message to all connected clients"""
         exclude = exclude or set()
         encrypted = self.encryption.encrypt(json.dumps(message))
+        if isinstance(encrypted, bytes):
+            encrypted = encrypted.decode('utf-8')
+
         
         disconnected = []
         for client_id, ws in self.clients.items():
