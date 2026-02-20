@@ -7,9 +7,9 @@ class MediaControlScreen extends StatefulWidget {
   final ConnectionManager connectionManager;
 
   const MediaControlScreen({
-    Key? key,
+    super.key,
     required this.connectionManager,
-  }) : super(key: key);
+  });
 
   @override
   State<MediaControlScreen> createState() => _MediaControlScreenState();
@@ -17,298 +17,303 @@ class MediaControlScreen extends StatefulWidget {
 
 class _MediaControlScreenState extends State<MediaControlScreen> {
   late MediaController _controller;
-  bool _isPlaying = false;
-  bool _isMuted = false;
-  int _volume = 50;
-  double _seekPosition = 0.0;
-  String _title = 'No Media Playing';
-  String _artist = '';
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
+  StreamSubscription<MediaState>? _stateSub;
 
-  Timer? _infoRefreshTimer;
+  // Authoritative state — always from server
+  MediaState _state = const MediaState();
+
+  // Volume drag: show local value while thumb is held down
+  double? _pendingVolume;
+
+  // Command cooldown: after any user command, suppress server pushes for
+  // 2 seconds so optimistic UI isn't clobbered before Windows catches up.
+  static const _cooldownMs = 2000;
+  DateTime? _lastCommandAt;
+
+  bool get _inCooldown =>
+      _lastCommandAt != null &&
+      DateTime.now().difference(_lastCommandAt!).inMilliseconds < _cooldownMs;
+
+  void _markCommand() => _lastCommandAt = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _controller = MediaController(widget.connectionManager);
-    
-    // Request media info periodically
-    _infoRefreshTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      _controller.requestMediaInfo();
+
+    _stateSub = _controller.stateStream.listen((state) {
+      if (!mounted) return;
+      // Ignore server pushes during cooldown — prevents icon glitch where
+      // Windows hasn't processed the key-press yet and pushes stale state.
+      if (_inCooldown) return;
+      setState(() => _state = state);
     });
-    
+
+    // Request immediate state so the screen isn't blank for the first 1.5 s
     _controller.requestMediaInfo();
   }
 
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // ── Commands ──────────────────────────────────────────────────────────────
+
   void _togglePlayPause() {
-    if (_isPlaying) {
+    _markCommand();
+    if (_state.isPlaying) {
       _controller.pause();
-      setState(() => _isPlaying = false);
+      setState(() => _state = _state.copyWith(isPlaying: false));
     } else {
       _controller.play();
-      setState(() => _isPlaying = true);
+      setState(() => _state = _state.copyWith(isPlaying: true));
     }
   }
 
   void _stop() {
+    _markCommand();
     _controller.stop();
-    setState(() {
-      _isPlaying = false;
-      _position = Duration.zero;
-    });
+    setState(() => _state = _state.copyWith(isPlaying: false));
   }
 
   void _next() {
+    _markCommand();
     _controller.next();
   }
 
   void _previous() {
+    _markCommand();
     _controller.previous();
   }
 
   void _toggleMute() {
+    _markCommand();
     _controller.toggleMute();
-    setState(() => _isMuted = !_isMuted);
+    setState(() => _state = _state.copyWith(isMuted: !_state.isMuted));
   }
 
-  void _setVolume(int value) {
-    setState(() => _volume = value);
-    _controller.setVolume(value);
+  void _onVolumeChanged(double value) {
+    setState(() => _pendingVolume = value);
   }
 
-  void _seek(double value) {
-    _controller.seek(value);
-    setState(() => _seekPosition = value);
+  void _onVolumeChangeEnd(double value) {
+    final v = value.round();
+    _markCommand();
+    _controller.setVolume(v);
+    setState(() {
+      _state = _state.copyWith(volume: v);
+      _pendingVolume = null;
+    });
   }
 
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: const Color(0xFF0D0D0F),
       appBar: AppBar(
         title: const Text('Media Control'),
+        backgroundColor: const Color(0xFF0D0D0F),
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: SafeArea(
-        child: isLandscape
-            ? _buildLandscapeLayout()
-            : _buildPortraitLayout(),
+        child: isLandscape ? _buildLandscape() : _buildPortrait(),
       ),
     );
   }
 
-  Widget _buildPortraitLayout() {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget _buildPortrait() => SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
           children: [
             _buildAlbumArt(),
-            const SizedBox(height: 24),
-            _buildMediaInfo(),
-            const SizedBox(height: 32),
-            _buildSeekBar(),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
+            _buildNowPlaying(),
+            const SizedBox(height: 36),
             _buildPlaybackControls(),
             const SizedBox(height: 32),
             _buildVolumeControl(),
           ],
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _buildLandscapeLayout() {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildAlbumArt(),
-              const SizedBox(height: 16),
-              _buildMediaInfo(),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+  Widget _buildLandscape() => Row(
+        children: [
+          Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildSeekBar(),
-                const SizedBox(height: 24),
-                _buildPlaybackControls(),
-                const SizedBox(height: 24),
-                _buildVolumeControl(),
+                _buildAlbumArt(),
+                const SizedBox(height: 16),
+                _buildNowPlaying(),
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildPlaybackControls(),
+                  const SizedBox(height: 24),
+                  _buildVolumeControl(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+
+  // ── Widgets ────────────────────────────────────────────────────────────────
 
   Widget _buildAlbumArt() {
-    return Container(
+    final active = _state.hasMedia;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
       width: 200,
       height: 200,
       decoration: BoxDecoration(
-        color: Colors.grey[800],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blue, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
-            blurRadius: 20,
-            spreadRadius: 5,
-          ),
-        ],
+        color: active ? const Color(0xFF1A1F3A) : const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: active ? Colors.blueAccent : Colors.grey[700]!,
+          width: 2,
+        ),
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: Colors.blueAccent.withAlpha(80),
+                  blurRadius: 30,
+                  spreadRadius: 6,
+                )
+              ]
+            : [],
       ),
       child: Icon(
-        Icons.music_note,
-        size: 100,
-        color: Colors.grey[600],
+        active
+            ? (_state.isPlaying ? Icons.music_note : Icons.pause_circle_outline)
+            : Icons.music_off,
+        size: 90,
+        color: active ? Colors.blueAccent : Colors.grey[600],
       ),
     );
   }
 
-  Widget _buildMediaInfo() {
-    return Column(
-      children: [
-        Text(
-          _title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        if (_artist.isNotEmpty) ...[
-          const SizedBox(height: 8),
+  Widget _buildNowPlaying() => Column(
+        children: [
           Text(
-            _artist,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[400],
+            _state.title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
+          if (_state.artist.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              _state.artist,
+              style: TextStyle(fontSize: 15, color: Colors.grey[400]),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ],
-      ],
-    );
-  }
+      );
 
-  Widget _buildSeekBar() {
-    return Column(
-      children: [
-        Slider(
-          value: _seekPosition,
-          min: 0.0,
-          max: 1.0,
-          onChanged: _seek,
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _formatDuration(_position),
-                style: TextStyle(color: Colors.grey[400], fontSize: 12),
-              ),
-              Text(
-                _formatDuration(_duration),
-                style: TextStyle(color: Colors.grey[400], fontSize: 12),
-              ),
-            ],
+  Widget _buildPlaybackControls() => Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _circleBtn(Icons.skip_previous_rounded, _previous, 56),
+          const SizedBox(width: 16),
+          _circleBtn(Icons.stop_rounded, _stop, 52, accent: Colors.redAccent),
+          const SizedBox(width: 16),
+          _circleBtn(
+            _state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            _togglePlayPause,
+            76,
+            primary: true,
           ),
-        ),
-      ],
-    );
-  }
+          const SizedBox(width: 16),
+          _circleBtn(Icons.skip_next_rounded, _next, 56),
+        ],
+      );
 
-  Widget _buildPlaybackControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildControlButton(
-          Icons.skip_previous,
-          _previous,
-          60,
-        ),
-        const SizedBox(width: 20),
-        _buildControlButton(
-          _isPlaying ? Icons.pause : Icons.play_arrow,
-          _togglePlayPause,
-          80,
-          isPrimary: true,
-        ),
-        const SizedBox(width: 20),
-        _buildControlButton(
-          Icons.skip_next,
-          _next,
-          60,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildControlButton(
+  Widget _circleBtn(
     IconData icon,
     VoidCallback onTap,
     double size, {
-    bool isPrimary = false,
+    bool primary = false,
+    Color? accent,
   }) {
+    final bg = primary
+        ? Colors.blueAccent
+        : accent != null
+            ? accent.withAlpha(35)
+            : const Color(0xFF1A1A2E);
+    final border = primary ? Colors.blue[300]! : (accent ?? Colors.blueAccent);
+
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: isPrimary ? Colors.blue : Colors.grey[800],
+          color: bg,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: isPrimary ? Colors.blue[300]! : Colors.blue,
-            width: 2,
-          ),
-          boxShadow: isPrimary
+          border: Border.all(color: border, width: 2),
+          boxShadow: primary
               ? [
                   BoxShadow(
-                    color: Colors.blue.withOpacity(0.5),
-                    blurRadius: 15,
-                    spreadRadius: 2,
-                  ),
+                    color: Colors.blueAccent.withAlpha(100),
+                    blurRadius: 20,
+                    spreadRadius: 3,
+                  )
                 ]
               : null,
         ),
-        child: Icon(
-          icon,
-          size: size * 0.5,
-          color: Colors.white,
-        ),
+        child: Icon(icon, size: size * 0.45, color: Colors.white),
       ),
     );
   }
 
   Widget _buildVolumeControl() {
+    final displayVol = _pendingVolume?.round() ??
+        (_state.volume >= 0 ? _state.volume : 50);
+    final sliderVal = (_pendingVolume ?? displayVol.toDouble()).clamp(0.0, 100.0);
+
+    IconData volIcon;
+    if (_state.isMuted || displayVol == 0) {
+      volIcon = Icons.volume_off_rounded;
+    } else if (displayVol < 40) {
+      volIcon = Icons.volume_down_rounded;
+    } else {
+      volIcon = Icons.volume_up_rounded;
+    }
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+        color: const Color(0xFF111118),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.blueAccent.withAlpha(60),
+          width: 1,
+        ),
       ),
       child: Column(
         children: [
@@ -316,36 +321,52 @@ class _MediaControlScreenState extends State<MediaControlScreen> {
             children: [
               IconButton(
                 icon: Icon(
-                  _isMuted ? Icons.volume_off : Icons.volume_up,
-                  color: _isMuted ? Colors.red : Colors.blue,
+                  volIcon,
+                  color: _state.isMuted ? Colors.redAccent : Colors.blueAccent,
                 ),
                 onPressed: _toggleMute,
+                tooltip: _state.isMuted ? 'Unmute' : 'Mute',
               ),
               Expanded(
-                child: Slider(
-                  value: _volume.toDouble(),
-                  min: 0,
-                  max: 100,
-                  divisions: 20,
-                  label: '$_volume%',
-                  onChanged: (value) => _setVolume(value.round()),
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor:
+                        _state.isMuted ? Colors.grey[600] : Colors.blueAccent,
+                    thumbColor: Colors.white,
+                    overlayColor: Colors.blueAccent.withAlpha(40),
+                  ),
+                  child: Slider(
+                    value: sliderVal,
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    label: '$displayVol%',
+                    onChanged: _onVolumeChanged,
+                    onChangeEnd: _onVolumeChangeEnd,
+                  ),
                 ),
               ),
-              Text(
-                '$_volume%',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  '$displayVol%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                  textAlign: TextAlign.end,
+                ),
               ),
-              const SizedBox(width: 8),
             ],
           ),
+          // Step buttons row
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton(
-                icon: const Icon(Icons.stop, color: Colors.red),
-                onPressed: _stop,
-                tooltip: 'Stop',
-              ),
+              _stepBtn(Icons.remove_rounded, _controller.volumeDown, 'Vol −'),
+              const SizedBox(width: 32),
+              _stepBtn(Icons.add_rounded, _controller.volumeUp, 'Vol +'),
             ],
           ),
         ],
@@ -353,10 +374,17 @@ class _MediaControlScreenState extends State<MediaControlScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _infoRefreshTimer?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
+  Widget _stepBtn(IconData icon, VoidCallback fn, String tip) =>
+      IconButton(
+        icon: Icon(icon, color: Colors.blueAccent),
+        onPressed: fn,
+        tooltip: tip,
+        style: IconButton.styleFrom(
+          backgroundColor: const Color(0xFF1A1A2E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Colors.blueAccent, width: 1),
+          ),
+        ),
+      );
 }

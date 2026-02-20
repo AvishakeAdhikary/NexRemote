@@ -77,6 +77,7 @@ class NexRemoteServer(QObject):
         # Active streaming tasks per client
         self._screen_stream_tasks: Dict[str, asyncio.Task] = {}
         self._camera_stream_tasks: Dict[str, asyncio.Task] = {}
+        self._media_stream_tasks:  Dict[str, asyncio.Task] = {}
         
         logger.info("Server initialized")
     
@@ -247,7 +248,7 @@ class NexRemoteServer(QObject):
             elif msg_type == 'screen_share':
                 await self._handle_screen_share(client_id, data)
             elif msg_type == 'media_control':
-                self.media_controller.send_command(data)
+                await self._handle_media_control(client_id, data)
             elif msg_type == 'task_manager':
                 # Offload blocking psutil calls to thread pool
                 response = await asyncio.to_thread(self.task_manager.handle_request, data)
@@ -385,6 +386,51 @@ class NexRemoteServer(QObject):
             logger.error(f"Screen push loop error: {e}", exc_info=True)
         finally:
             logger.debug(f"Screen push loop ended for {client_id}")
+
+    # ─── Media Control (state sync) ────────────────────────────────────
+
+    async def _handle_media_control(self, client_id: str, data: dict):
+        """Handle media commands and manage the per-client media state push loop."""
+        action = data.get('action')
+
+        # Execute the command in a thread (COM + subprocess calls are blocking)
+        response = await asyncio.to_thread(self.media_controller.send_command, data)
+
+        # For get_info, send the result back immediately
+        if response:
+            await self._send_response(client_id, response)
+
+        # Start the push loop on first interaction with this client, if not already running
+        if client_id not in self._media_stream_tasks or \
+                self._media_stream_tasks[client_id].done():
+            task = asyncio.create_task(self._media_push_loop(client_id))
+            self._media_stream_tasks[client_id] = task
+            logger.debug(f"Media push loop started for {client_id}")
+
+    async def _media_push_loop(self, client_id: str):
+        """
+        Push the full media state (volume, mute, now-playing) to the client every
+        1.5 seconds while it is connected. This keeps the Flutter UI always in sync
+        with actual Windows state without the client needing to poll.
+        """
+        logger.debug(f"Media state push loop running for {client_id}")
+        try:
+            while client_id in self.clients:
+                try:
+                    state = await asyncio.to_thread(
+                        self.media_controller.get_full_state
+                    )
+                    await self._send_response(client_id, state)
+                except Exception as e:
+                    logger.debug(f"Media state push error: {e}")
+
+                # Poll at 1.5 s — fast enough to feel real-time, slow enough not
+                # to hammer PowerShell for SMTC data on every tick
+                await asyncio.sleep(1.5)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            logger.debug(f"Media push loop ended for {client_id}")
     
     # ─── Camera (server→client streaming) ──────────────────────────────
     
@@ -499,12 +545,14 @@ class NexRemoteServer(QObject):
     
     def _stop_client_streams(self, client_id: str):
         """Cancel all streaming tasks for a client"""
-        if client_id and client_id in self._screen_stream_tasks:
-            self._screen_stream_tasks[client_id].cancel()
-            del self._screen_stream_tasks[client_id]
-        if client_id and client_id in self._camera_stream_tasks:
-            self._camera_stream_tasks[client_id].cancel()
-            del self._camera_stream_tasks[client_id]
+        for task_dict in (
+            self._screen_stream_tasks,
+            self._camera_stream_tasks,
+            self._media_stream_tasks,
+        ):
+            if client_id in task_dict:
+                task_dict[client_id].cancel()
+                del task_dict[client_id]
     
     async def _send_response(self, client_id: str, response: dict):
         """Send an encrypted JSON response back to a specific client"""
