@@ -75,7 +75,8 @@ class NexRemoteServer(QObject):
         self.clients: Dict[str, websockets.WebSocketServerProtocol] = {}
         
         # Active streaming tasks per client
-        self._screen_stream_tasks: Dict[str, asyncio.Task] = {}
+        # screen tasks keyed by (client_id, mss_monitor_index) for multi-monitor
+        self._screen_stream_tasks: dict[tuple[str, int], asyncio.Task] = {}
         self._camera_stream_tasks: Dict[str, asyncio.Task] = {}
         self._media_stream_tasks:  Dict[str, asyncio.Task] = {}
         
@@ -270,122 +271,157 @@ class NexRemoteServer(QObject):
     # ─── Screen Share (push-model binary streaming) ────────────────────
     
     async def _handle_screen_share(self, client_id: str, data: dict):
-        """Handle screen share requests"""
+        """Handle screen share requests with full multi-monitor support."""
         try:
             action = data.get('action')
-            
+
             if action == 'start':
-                # Start push-model streaming for this client
-                fps = data.get('fps', 30)
-                quality = data.get('quality', 70)
+                fps        = data.get('fps', 30)
+                quality    = data.get('quality', 70)
                 resolution = data.get('resolution', 'native')
-                display_index = data.get('display_index', 0)
-                
+
+                # Supports both single display_index and a list display_indices
+                single = data.get('display_index', 0)
+                indices: list[int] = data.get('display_indices', [single])
+                if not indices:
+                    indices = [single]
+
                 self.screen_capture.set_fps(fps)
                 self.screen_capture.set_quality(quality)
                 self.screen_capture.set_resolution(resolution)
-                if display_index > 0:
-                    self.screen_capture.set_monitor(display_index + 1)
-                
-                # Cancel any existing stream task for this client
-                if client_id in self._screen_stream_tasks:
-                    self._screen_stream_tasks[client_id].cancel()
-                
-                # Launch push loop
-                task = asyncio.create_task(self._screen_push_loop(client_id, fps))
-                self._screen_stream_tasks[client_id] = task
-                logger.info(f"Screen streaming started for {client_id} ({resolution}, {fps}fps, q{quality})")
-                
+
+                for disp_idx in indices:
+                    # mss is 1-based; disp_idx 0 → mss monitor 1
+                    mss_idx = max(1, disp_idx + 1)
+                    key = (client_id, mss_idx)
+
+                    # Cancel existing push for this monitor
+                    if key in self._screen_stream_tasks:
+                        self._screen_stream_tasks[key].cancel()
+
+                    # Start per-monitor capture thread
+                    self.screen_capture.start_monitor(mss_idx)
+
+                    # Start push loop for this monitor
+                    task = asyncio.create_task(
+                        self._screen_push_loop(client_id, mss_idx, fps)
+                    )
+                    self._screen_stream_tasks[key] = task
+
+                logger.info(
+                    f"Screen streaming started for {client_id} "
+                    f"monitors={indices} ({resolution}, {fps}fps, q{quality})"
+                )
+
             elif action == 'stop':
-                if client_id in self._screen_stream_tasks:
-                    self._screen_stream_tasks[client_id].cancel()
-                    del self._screen_stream_tasks[client_id]
+                # Stop all monitors for this client (or specific one)
+                stop_idx = data.get('display_index', None)
+                keys_to_cancel = [
+                    k for k in self._screen_stream_tasks
+                    if k[0] == client_id and (stop_idx is None or k[1] == stop_idx + 1)
+                ]
+                for k in keys_to_cancel:
+                    self._screen_stream_tasks[k].cancel()
+                    del self._screen_stream_tasks[k]
+                    self.screen_capture.stop_monitor(k[1])
                 logger.info(f"Screen streaming stopped for {client_id}")
-                
+
             elif action == 'set_quality':
                 self.screen_capture.set_quality(data.get('quality', 70))
-                
+
             elif action == 'set_resolution':
                 self.screen_capture.set_resolution(data.get('resolution', 'native'))
-                
+
             elif action == 'set_fps':
                 new_fps = data.get('fps', 30)
                 self.screen_capture.set_fps(new_fps)
-                # Restart push loop with new FPS
-                if client_id in self._screen_stream_tasks:
-                    self._screen_stream_tasks[client_id].cancel()
-                    task = asyncio.create_task(self._screen_push_loop(client_id, new_fps))
-                    self._screen_stream_tasks[client_id] = task
-                    
+                # Restart all push loops for this client with new FPS
+                for key in [k for k in self._screen_stream_tasks if k[0] == client_id]:
+                    self._screen_stream_tasks[key].cancel()
+                    task = asyncio.create_task(
+                        self._screen_push_loop(client_id, key[1], new_fps)
+                    )
+                    self._screen_stream_tasks[key] = task
+
             elif action == 'set_monitor':
                 self.screen_capture.set_monitor(data.get('monitor_index', 1))
-                
+
             elif action == 'list_displays':
                 monitors = await asyncio.to_thread(self.screen_capture.get_monitors)
                 display_list = []
                 for m in monitors:
                     display_list.append({
-                        'index': m['id'] - 1,
-                        'name': f"Display {m['id']}",
-                        'width': m['width'],
-                        'height': m['height'],
+                        'index':      m['id'] - 1,   # 0-based for client
+                        'name':       m.get('label', f"Display {m['id']}"),
+                        'width':      m['width'],
+                        'height':     m['height'],
+                        'is_primary': m.get('is_primary', False),
                     })
                 if not display_list:
-                    display_list = [{'index': 0, 'name': 'Primary Display', 'width': 1920, 'height': 1080}]
+                    display_list = [{
+                        'index': 0, 'name': 'Primary Display',
+                        'width': 1920, 'height': 1080, 'is_primary': True,
+                    }]
                 info = self.screen_capture.get_frame_info()
+                active = [idx - 1 for idx in self.screen_capture.get_all_active_monitors()]
                 response = {
                     'type': 'screen_share',
                     'action': 'display_list',
                     'displays': display_list,
+                    'active_displays': active,
                     'current_resolution': info['resolution'],
                     'current_fps': info['fps'],
                     'current_quality': info['quality'],
                 }
                 await self._send_response(client_id, response)
-                
+
             elif action == 'input':
-                # Touch-to-mouse input (fast path — no thread offload needed)
                 self._handle_screen_share_input(data)
-                
+
         except Exception as e:
             logger.error(f"Error handling screen share: {e}", exc_info=True)
     
-    async def _screen_push_loop(self, client_id: str, fps: int):
-        """Continuously push screen frames to client as binary messages"""
+    async def _screen_push_loop(self, client_id: str, monitor_index: int, fps: int):
+        """
+        Push JPEG frames for one monitor to the client as binary messages.
+        Header: SCRN (4 bytes) + monitor_index as 1 byte = 5-byte header total.
+        The client reads byte[4] to route the frame to the correct display slot.
+        """
         interval = 1.0 / max(1, fps)
-        logger.debug(f"Screen push loop started for {client_id} ({fps} fps)")
-        
+        logger.debug(
+            f"Screen push loop started for {client_id} "
+            f"monitor={monitor_index} ({fps} fps)"
+        )
+        # Build per-monitor header: SCRN + monitor_index (1 byte, 0-based for client)
+        client_mon_idx = max(0, monitor_index - 1).to_bytes(1, 'big')
+        header = SCREEN_HEADER + client_mon_idx
+
         try:
             while client_id in self.clients:
-                start = asyncio.get_event_loop().time()
-                
-                # Get latest frame from the capture thread (non-blocking read)
-                frame = self.screen_capture.get_latest_frame()
-                
+                t0 = asyncio.get_event_loop().time()
+
+                frame = self.screen_capture.get_latest_frame(monitor_index)
                 if frame and client_id in self.clients:
                     try:
-                        # Send as binary: SCRN header + JPEG bytes
-                        await self.clients[client_id].send(SCREEN_HEADER + frame)
+                        await self.clients[client_id].send(header + frame)
                     except websockets.exceptions.ConnectionClosed:
                         break
                     except Exception as e:
                         logger.error(f"Error sending screen frame: {e}")
                         break
-                
-                # Pace to target FPS
-                elapsed = asyncio.get_event_loop().time() - start
-                sleep_time = interval - elapsed
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
-                else:
-                    await asyncio.sleep(0)  # Yield to event loop
-                    
+
+                elapsed = asyncio.get_event_loop().time() - t0
+                wait = interval - elapsed
+                await asyncio.sleep(max(0.0, wait))
+
         except asyncio.CancelledError:
             pass
         except Exception as e:
             logger.error(f"Screen push loop error: {e}", exc_info=True)
         finally:
-            logger.debug(f"Screen push loop ended for {client_id}")
+            logger.debug(
+                f"Screen push loop ended {client_id} monitor={monitor_index}"
+            )
 
     # ─── Media Control (state sync) ────────────────────────────────────
 
@@ -545,11 +581,13 @@ class NexRemoteServer(QObject):
     
     def _stop_client_streams(self, client_id: str):
         """Cancel all streaming tasks for a client"""
-        for task_dict in (
-            self._screen_stream_tasks,
-            self._camera_stream_tasks,
-            self._media_stream_tasks,
-        ):
+        # Screen tasks are keyed (client_id, monitor_index)
+        screen_keys = [k for k in self._screen_stream_tasks if k[0] == client_id]
+        for k in screen_keys:
+            self._screen_stream_tasks[k].cancel()
+            del self._screen_stream_tasks[k]
+
+        for task_dict in (self._camera_stream_tasks, self._media_stream_tasks):
             if client_id in task_dict:
                 task_dict[client_id].cancel()
                 del task_dict[client_id]
