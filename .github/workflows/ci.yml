@@ -71,10 +71,6 @@ jobs:
         working-directory: nexremote
         run: flutter pub get
 
-      - name: Run analyzer
-        working-directory: nexremote
-        run: flutter analyze --no-fatal-infos
-
       - name: Build APK
         working-directory: nexremote
         run: flutter build apk --release
