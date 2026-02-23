@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import '../core/connection_manager.dart';
 import 'gamepad_preset.dart';
 
@@ -75,7 +76,7 @@ class GamepadController {
 
   void sendButton(String button, bool pressed) {
     if (pressed && _layout.hapticFeedback) {
-      triggerHaptic();
+      HapticFeedback.lightImpact();
     }
     connectionManager.sendMessage({
       'type': _msgType,
@@ -87,7 +88,7 @@ class GamepadController {
 
   void sendDPad(String direction, bool pressed) {
     if (pressed && _layout.hapticFeedback) {
-      triggerHaptic();
+      HapticFeedback.lightImpact();
     }
     connectionManager.sendMessage({
       'type': _msgType,

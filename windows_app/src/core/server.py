@@ -256,6 +256,11 @@ class NexRemoteServer(QObject):
                     'mode': new_mode,
                     'status': self.gamepad.get_status(),
                 })
+            elif msg_type == 'macro':
+                # Replay a sequence of inputs from the client.
+                # Payload: { steps: [ { action: 'button:A'|'dpad:UP'|'keyboard:r'|'mouse:left', delay: ms } ] }
+                asyncio.ensure_future(self._replay_macro(data.get('steps', [])))
+
             elif msg_type == 'camera':
                 await self._handle_camera(client_id, data)
             elif msg_type == 'file_explorer':
@@ -441,7 +446,42 @@ class NexRemoteServer(QObject):
 
     # ─── Media Control (state sync) ────────────────────────────────────
 
+    async def _replay_macro(self, steps: list):
+        """
+        Replay a macro sequence on the server.
+
+        Each step: { "action": "button:A" | "dpad:UP" | "keyboard:r" | "mouse:left", "delay": ms }
+        The delay is applied BEFORE firing the step.
+        """
+        for step in steps:
+            raw = step.get('action', '')
+            delay_ms = step.get('delay', 0)
+            if delay_ms > 0:
+                await asyncio.sleep(delay_ms / 1000.0)
+
+            parts = raw.split(':', 1)
+            category = parts[0] if parts else ''
+            key = parts[1] if len(parts) > 1 else ''
+
+            try:
+                if category == 'button':
+                    # Press then release
+                    self.gamepad.send_input({'input_type': 'button', 'button': key, 'pressed': True})
+                    await asyncio.sleep(0.05)
+                    self.gamepad.send_input({'input_type': 'button', 'button': key, 'pressed': False})
+                elif category == 'dpad':
+                    self.gamepad.send_input({'input_type': 'dpad', 'direction': key.lower(), 'pressed': True})
+                    await asyncio.sleep(0.05)
+                    self.gamepad.send_input({'input_type': 'dpad', 'direction': key.lower(), 'pressed': False})
+                elif category == 'keyboard':
+                    self.keyboard.send_key({'action': 'keypress', 'key': key})
+                elif category == 'mouse':
+                    self.mouse.send_input({'action': 'click', 'button': key})
+            except Exception as exc:
+                logger.warning(f"Macro step failed ({raw}): {exc}")
+
     async def _handle_media_control(self, client_id: str, data: dict):
+
         """Handle media commands and manage the per-client media state push loop."""
         action = data.get('action')
 

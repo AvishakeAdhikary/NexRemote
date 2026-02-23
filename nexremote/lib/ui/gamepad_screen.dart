@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'dart:async';
 import '../core/connection_manager.dart';
-import '../input/gamepad_controller.dart';
-
-// Re-export so callers only need this file
-export '../input/gamepad_controller.dart';
+import '../input/gamepad_controller.dart' hide GamepadLayout;
+import '../layouts/layout_manager.dart';
+import '../layouts/layout_widget.dart';
+import 'layout_editor_screen.dart';
 
 class GamepadScreen extends StatefulWidget {
   final ConnectionManager connectionManager;
@@ -16,18 +16,15 @@ class GamepadScreen extends StatefulWidget {
   State<GamepadScreen> createState() => _GamepadScreenState();
 }
 
-class _GamepadScreenState extends State<GamepadScreen>
-    with SingleTickerProviderStateMixin {
+class _GamepadScreenState extends State<GamepadScreen> {
   late GamepadController _ctrl;
-  StreamSubscription? _gyroSub;
+  final LayoutManager _layoutManager = LayoutManager();
 
+  StreamSubscription? _gyroSub;
   bool _gyroEnabled = false;
   bool _loading = true;
-  Offset _leftStick = Offset.zero;
-  Offset _rightStick = Offset.zero;
 
-  // Button press state for visual feedback
-  final Set<String> _pressedButtons = {};
+  GamepadLayout? get _activeLayout => _layoutManager.activeLayout;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -35,15 +32,27 @@ class _GamepadScreenState extends State<GamepadScreen>
   void initState() {
     super.initState();
     _ctrl = GamepadController(widget.connectionManager);
-    _ctrl.loadPresets().then((_) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _gyroEnabled = _ctrl.activeLayout.gyroEnabled;
-          if (_gyroEnabled) _startGyro();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await Future.wait([_ctrl.loadPresets(), _layoutManager.init()]);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _gyroEnabled = _activeLayout?.gyroEnabled ?? false;
+        if (_gyroEnabled) _startGyro();
+      });
+
+      // Notify server of active mode
+      final mode = _activeLayout?.mode ?? 'xinput';
+      if (mode != 'android') {
+        widget.connectionManager.sendMessage({
+          'type': 'gamepad_mode',
+          'mode': mode,
         });
       }
-    });
+    }
   }
 
   @override
@@ -53,10 +62,10 @@ class _GamepadScreenState extends State<GamepadScreen>
     super.dispose();
   }
 
-  // ── Gyroscope ─────────────────────────────────────────────────────────────
+  // ── Gyro ─────────────────────────────────────────────────────────────────
 
   void _startGyro() {
-    _gyroSub = gyroscopeEventStream().listen((GyroscopeEvent e) {
+    _gyroSub = gyroscopeEventStream().listen((e) {
       _ctrl.sendGyroData(e.x, e.y, e.z);
     });
   }
@@ -66,61 +75,90 @@ class _GamepadScreenState extends State<GamepadScreen>
     _gyroSub = null;
   }
 
-  // ── Settings bottom sheet ─────────────────────────────────────────────────
+  // ── Layout editor ─────────────────────────────────────────────────────────
 
-  void _openSettings() {
+  Future<void> _openEditor() async {
+    final layout = _activeLayout;
+    if (layout == null) return;
+
+    final edited = await Navigator.push<GamepadLayout>(
+      context,
+      MaterialPageRoute(builder: (_) => LayoutEditorScreen(layout: layout)),
+    );
+
+    if (edited != null && mounted) {
+      await _layoutManager.saveLayout(edited);
+      await _layoutManager.setActiveLayout(edited);
+      setState(() {});
+    }
+  }
+
+  // ── Layout selector bottom sheet ──────────────────────────────────────────
+
+  void _openLayoutSelector() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _GamepadSettingsSheet(
-        ctrl: _ctrl,
-        gyroEnabled: _gyroEnabled,
-        onApply: (layout, gyro) async {
-          await _ctrl.applyLayout(layout);
-          setState(() {
-            _gyroEnabled = gyro;
-          });
-          if (gyro) {
+      isScrollControlled: true,
+      builder: (_) => _LayoutSelectorSheet(
+        layoutManager: _layoutManager,
+        onSelected: (layout) async {
+          await _layoutManager.setActiveLayout(layout);
+          final mode = layout.mode;
+          if (mode != 'android') {
+            widget.connectionManager.sendMessage({
+              'type': 'gamepad_mode',
+              'mode': mode,
+            });
+          }
+          // Sync gyro
+          if (layout.gyroEnabled && !_gyroEnabled) {
             _startGyro();
-          } else {
+          } else if (!layout.gyroEnabled && _gyroEnabled) {
             _stopGyro();
           }
+          setState(() {
+            _gyroEnabled = layout.gyroEnabled;
+          });
+        },
+        onRename: (layout, newName) async {
+          final renamed = layout.copyWith(name: newName);
+          await _layoutManager.saveLayout(renamed);
+          // If it was the active layout, update active too
+          if (_layoutManager.activeLayout?.id == layout.id) {
+            await _layoutManager.setActiveLayout(renamed);
+          }
+          setState(() {});
+        },
+        onEdit: (layout) async {
+          Navigator.pop(context);
+          final edited = await Navigator.push<GamepadLayout>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LayoutEditorScreen(layout: layout),
+            ),
+          );
+          if (edited != null && mounted) {
+            await _layoutManager.saveLayout(edited);
+            await _layoutManager.setActiveLayout(edited);
+            setState(() {});
+          }
+        },
+        onDelete: (layout) async {
+          await _layoutManager.deleteLayout(layout.id);
+          setState(() {});
+        },
+        onDuplicate: (layout) async {
+          final dup = layout.copyWith(
+            id: '${layout.id}_copy_${DateTime.now().millisecondsSinceEpoch}',
+            name: '${layout.name} (copy)',
+          );
+          await _layoutManager.saveLayout(dup);
+          setState(() {});
         },
       ),
     );
   }
-
-  // ── Button helpers ────────────────────────────────────────────────────────
-
-  String _label(String key) => _ctrl.activeLayout.buttons[key]?.label ?? key;
-
-  Color _color(String key, Color def) {
-    final cfg = _ctrl.activeLayout.buttons[key];
-    return cfg != null ? Color(cfg.colorValue) : def;
-  }
-
-  void _press(String key) {
-    setState(() => _pressedButtons.add(key));
-    _ctrl.sendButton(key, true);
-  }
-
-  void _release(String key) {
-    setState(() => _pressedButtons.remove(key));
-    _ctrl.sendButton(key, false);
-  }
-
-  void _dpadPress(String dir) {
-    setState(() => _pressedButtons.add('dpad_$dir'));
-    _ctrl.sendDPad(dir, true);
-  }
-
-  void _dpadRelease(String dir) {
-    setState(() => _pressedButtons.remove('dpad_$dir'));
-    _ctrl.sendDPad(dir, false);
-  }
-
-  bool _isPressed(String key) => _pressedButtons.contains(key);
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
@@ -133,26 +171,27 @@ class _GamepadScreenState extends State<GamepadScreen>
       );
     }
 
-    final layout = _ctrl.activeLayout;
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+    final layout = _activeLayout;
 
     return Scaffold(
       backgroundColor: const Color(0xFF111827),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Gamepad',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
             Text(
-              '${layout.name}  •  ${layout.mode.label}',
-              style: const TextStyle(fontSize: 11, color: Colors.white60),
+              layout?.name ?? 'Gamepad',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
+            if (layout != null)
+              Text(
+                '${layout.mode.toUpperCase()}  •  ${layout.hapticFeedback ? "Haptic" : ""}',
+                style: const TextStyle(fontSize: 10, color: Colors.white54),
+              ),
           ],
         ),
         actions: [
@@ -163,7 +202,8 @@ class _GamepadScreenState extends State<GamepadScreen>
               _gyroEnabled
                   ? Icons.screen_rotation_alt
                   : Icons.screen_rotation_alt_outlined,
-              color: _gyroEnabled ? Colors.tealAccent : Colors.white54,
+              color: _gyroEnabled ? Colors.tealAccent : Colors.white38,
+              size: 20,
             ),
             onPressed: () {
               setState(() => _gyroEnabled = !_gyroEnabled);
@@ -174,659 +214,215 @@ class _GamepadScreenState extends State<GamepadScreen>
               }
             },
           ),
-          // Settings
+          // Edit current layout
           IconButton(
-            tooltip: 'Gamepad Settings',
-            icon: const Icon(Icons.tune),
-            onPressed: _openSettings,
+            tooltip: 'Edit Layout',
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            onPressed: _openEditor,
+          ),
+          // Layout selector
+          IconButton(
+            tooltip: 'Layouts',
+            icon: const Icon(Icons.layers_outlined, size: 20),
+            onPressed: _openLayoutSelector,
           ),
         ],
       ),
-      body: SafeArea(child: isLandscape ? _buildLandscape() : _buildPortrait()),
-    );
-  }
-
-  // ── Layouts ───────────────────────────────────────────────────────────────
-
-  Widget _buildPortrait() {
-    return Column(
-      children: [
-        _buildShoulderRow(),
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [_buildDPad(), _buildJoystick(isLeft: true)],
-                ),
+      body: layout == null
+          ? const Center(
+              child: Text(
+                'No layout loaded',
+                style: TextStyle(color: Colors.white54),
               ),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildActionButtons(),
-                    _buildJoystick(isLeft: false),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        _buildCenterButtons(),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
-  Widget _buildLandscape() {
-    return Stack(
-      children: [
-        // Left zone
-        Positioned(
-          left: 16,
-          top: 0,
-          bottom: 0,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildShoulderPair(isLeft: true),
-              _buildDPad(),
-              _buildJoystick(isLeft: true),
-            ],
-          ),
-        ),
-        // Centre
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 12,
-          child: Center(child: _buildCenterButtons()),
-        ),
-        // Right zone
-        Positioned(
-          right: 16,
-          top: 0,
-          bottom: 0,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildShoulderPair(isLeft: false),
-              _buildActionButtons(),
-              _buildJoystick(isLeft: false),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Component widgets ─────────────────────────────────────────────────────
-
-  Widget _buildShoulderRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildShoulderPair(isLeft: true),
-          _buildShoulderPair(isLeft: false),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildShoulderPair({required bool isLeft}) {
-    final lb = isLeft ? 'L1' : 'R1';
-    final lt = isLeft ? 'L2' : 'R2';
-    return Column(
-      children: [
-        _buildShoulderBtn(lb),
-        const SizedBox(height: 4),
-        _buildShoulderBtn(lt),
-      ],
-    );
-  }
-
-  Widget _buildShoulderBtn(String key) {
-    final pressed = _isPressed(key);
-    return GestureDetector(
-      onTapDown: (_) => _press(key),
-      onTapUp: (_) => _release(key),
-      onTapCancel: () => _release(key),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        width: 64,
-        height: 32,
-        decoration: BoxDecoration(
-          color: pressed ? Colors.blueAccent : const Color(0xFF374151),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: pressed ? Colors.blueAccent : Colors.white24,
-          ),
-          boxShadow: pressed
-              ? [const BoxShadow(color: Colors.blueAccent, blurRadius: 8)]
-              : [],
-        ),
-        child: Center(
-          child: Text(
-            _label(key),
-            style: TextStyle(
-              color: pressed ? Colors.white : Colors.white70,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDPad() {
-    return SizedBox(
-      width: 120,
-      height: 120,
-      child: Stack(
-        children: [
-          _dpadBtn('UP', Icons.arrow_drop_up, top: 0, left: 40),
-          _dpadBtn('DOWN', Icons.arrow_drop_down, bottom: 0, left: 40),
-          _dpadBtn('LEFT', Icons.arrow_left, top: 40, left: 0),
-          _dpadBtn('RIGHT', Icons.arrow_right, top: 40, right: 0),
-          // Centre nub
-          const Positioned(
-            left: 42,
-            top: 42,
-            child: SizedBox(
-              width: 36,
-              height: 36,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFF374151),
-                  shape: BoxShape.circle,
-                ),
+            )
+          : SafeArea(
+              child: LayoutWidget(
+                layout: layout,
+                gamepadController: _ctrl,
+                editMode: false,
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dpadBtn(
-    String dir,
-    IconData icon, {
-    double? top,
-    double? bottom,
-    double? left,
-    double? right,
-  }) {
-    final pressed = _isPressed('dpad_$dir');
-    return Positioned(
-      top: top,
-      bottom: bottom,
-      left: left,
-      right: right,
-      child: GestureDetector(
-        onTapDown: (_) => _dpadPress(dir),
-        onTapUp: (_) => _dpadRelease(dir),
-        onTapCancel: () => _dpadRelease(dir),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 70),
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: pressed ? Colors.blueAccent : const Color(0xFF374151),
-            border: Border.all(
-              color: pressed ? Colors.blueAccent : Colors.white24,
-            ),
-          ),
-          child: Icon(
-            icon,
-            color: pressed ? Colors.white : Colors.white60,
-            size: 24,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return SizedBox(
-      width: 120,
-      height: 120,
-      child: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 40,
-            child: _actionBtn('Y', def: const Color(0xFFF59E0B)),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 40,
-            child: _actionBtn('A', def: const Color(0xFF10B981)),
-          ),
-          Positioned(
-            left: 0,
-            top: 40,
-            child: _actionBtn('X', def: const Color(0xFF3B82F6)),
-          ),
-          Positioned(
-            right: 0,
-            top: 40,
-            child: _actionBtn('B', def: const Color(0xFFEF4444)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionBtn(String key, {required Color def}) {
-    final color = _color(key, def);
-    final pressed = _isPressed(key);
-    return GestureDetector(
-      onTapDown: (_) => _press(key),
-      onTapUp: (_) => _release(key),
-      onTapCancel: () => _release(key),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 70),
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: pressed ? color : color.withAlpha(70),
-          shape: BoxShape.circle,
-          border: Border.all(color: color, width: 2),
-          boxShadow: pressed
-              ? [BoxShadow(color: color.withAlpha(180), blurRadius: 10)]
-              : [],
-        ),
-        child: Center(
-          child: Text(
-            _label(key),
-            style: TextStyle(
-              color: pressed ? Colors.white : color,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildJoystick({required bool isLeft}) {
-    final offset = isLeft ? _leftStick : _rightStick;
-    const size = 100.0;
-    const nubSize = 34.0;
-    const radius = (size - nubSize) / 2;
-
-    return GestureDetector(
-      onPanStart: (_) {},
-      onPanUpdate: (d) => _updateStick(d.localPosition, isLeft, size),
-      onPanEnd: (_) => _releaseStick(isLeft),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1F2937),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white24, width: 1.5),
-        ),
-        child: Stack(
-          children: [
-            // Track ring
-            Center(
-              child: Container(
-                width: size - 20,
-                height: size - 20,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white10, width: 1),
-                ),
-              ),
-            ),
-            // Nub
-            Positioned(
-              left: size / 2 + offset.dx * radius - nubSize / 2,
-              top: size / 2 + offset.dy * radius - nubSize / 2,
-              child: Container(
-                width: nubSize,
-                height: nubSize,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF60A5FA), Color(0xFF3B82F6)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF3B82F6).withAlpha(150),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _updateStick(Offset pos, bool isLeft, double size) {
-    final center = Offset(size / 2, size / 2);
-    var delta = pos - center;
-    final dist = delta.distance;
-    final maxDist = size / 2 - 17;
-    if (dist > maxDist) delta = delta * (maxDist / dist);
-    final norm = Offset(delta.dx / maxDist, delta.dy / maxDist);
-
-    setState(() {
-      if (isLeft) {
-        _leftStick = norm;
-      } else {
-        _rightStick = norm;
-      }
-    });
-    _ctrl.sendJoystick(isLeft ? 'left' : 'right', norm.dx, -norm.dy);
-  }
-
-  void _releaseStick(bool isLeft) {
-    setState(() {
-      if (isLeft) {
-        _leftStick = Offset.zero;
-      } else {
-        _rightStick = Offset.zero;
-      }
-    });
-    _ctrl.sendJoystick(isLeft ? 'left' : 'right', 0, 0);
-  }
-
-  Widget _buildCenterButtons() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _centerBtn('SELECT', Icons.view_stream),
-        const SizedBox(width: 32),
-        _centerBtn('START', Icons.play_arrow),
-      ],
-    );
-  }
-
-  Widget _centerBtn(String key, IconData icon) {
-    final pressed = _isPressed(key);
-    return GestureDetector(
-      onTapDown: (_) => _press(key),
-      onTapUp: (_) => _release(key),
-      onTapCancel: () => _release(key),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        decoration: BoxDecoration(
-          color: pressed ? Colors.blueAccent : const Color(0xFF374151),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: pressed ? Colors.blueAccent : Colors.white24,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: Colors.white70),
-            const SizedBox(width: 4),
-            Text(
-              _label(key),
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
 
-// ── Settings bottom sheet ──────────────────────────────────────────────────────
+// ── Layout selector bottom sheet ──────────────────────────────────────────────
 
-class _GamepadSettingsSheet extends StatefulWidget {
-  final GamepadController ctrl;
-  final bool gyroEnabled;
-  final Future<void> Function(GamepadLayout layout, bool gyro) onApply;
+class _LayoutSelectorSheet extends StatefulWidget {
+  final LayoutManager layoutManager;
+  final void Function(GamepadLayout) onSelected;
+  final void Function(GamepadLayout, String newName) onRename;
+  final void Function(GamepadLayout) onEdit;
+  final void Function(GamepadLayout) onDelete;
+  final void Function(GamepadLayout) onDuplicate;
 
-  const _GamepadSettingsSheet({
-    required this.ctrl,
-    required this.gyroEnabled,
-    required this.onApply,
+  const _LayoutSelectorSheet({
+    required this.layoutManager,
+    required this.onSelected,
+    required this.onRename,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onDuplicate,
   });
 
   @override
-  State<_GamepadSettingsSheet> createState() => _GamepadSettingsSheetState();
+  State<_LayoutSelectorSheet> createState() => _LayoutSelectorSheetState();
 }
 
-class _GamepadSettingsSheetState extends State<_GamepadSettingsSheet> {
-  late GamepadLayout _draft;
-  late bool _gyro;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _draft = widget.ctrl.activeLayout;
-    _gyro = widget.gyroEnabled;
-  }
-
-  Future<void> _apply() async {
-    setState(() => _saving = true);
-    // For built-ins: create a patched copy if haptic/gyro changed
-    GamepadLayout toApply = _draft;
-    if (_draft.isBuiltIn &&
-        (_draft.hapticFeedback != widget.ctrl.hapticEnabled ||
-            _gyro != widget.gyroEnabled)) {
-      toApply = _draft.copyWith(
-        hapticFeedback: _draft.hapticFeedback,
-        gyroEnabled: _gyro,
-      );
-    }
-    await widget.onApply(toApply, _gyro);
-    if (mounted) Navigator.pop(context);
-  }
-
-  Future<void> _saveAsNew() async {
-    final name = await _promptName(context, 'Save as Preset');
-    if (name == null || name.isEmpty) return;
-    final newLayout = GamepadLayout(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name,
-      mode: _draft.mode,
-      hapticFeedback: _draft.hapticFeedback,
-      gyroEnabled: _gyro,
-      buttons: _draft.buttons,
-    );
-    await widget.ctrl.saveCustomLayout(newLayout);
-    if (mounted) setState(() {});
-  }
-
-  Future<String?> _promptName(BuildContext ctx, String title) async {
-    String value = '';
-    return showDialog<String>(
-      context: ctx,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Preset name'),
-          onChanged: (v) => value = v,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, value),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
+class _LayoutSelectorSheetState extends State<_LayoutSelectorSheet> {
   @override
   Widget build(BuildContext context) {
-    final presets = widget.ctrl.presetManager.all;
+    final layouts = widget.layoutManager.getAllLayouts();
+    final activeId = widget.layoutManager.activeLayout?.id;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.92,
+      initialChildSize: 0.55,
+      minChildSize: 0.35,
+      maxChildSize: 0.85,
       builder: (_, scroll) => Container(
         decoration: const BoxDecoration(
           color: Color(0xFF1F2937),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: ListView(
-          controller: scroll,
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(
           children: [
-            // Handle bar
+            // Handle
             Center(
               child: Container(
-                width: 40,
+                width: 36,
                 height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(top: 10, bottom: 12),
                 decoration: BoxDecoration(
                   color: Colors.white24,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-
-            // Title
-            const Text(
-              'Gamepad Settings',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Mode selector ────────────────────────────────────────────
-            const Text(
-              'Input Mode',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            SegmentedButton<GamepadMode>(
-              style: SegmentedButton.styleFrom(
-                backgroundColor: const Color(0xFF374151),
-                selectedBackgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white70,
-                selectedForegroundColor: Colors.white,
-              ),
-              segments: GamepadMode.values
-                  .map(
-                    (m) => ButtonSegment(
-                      value: m,
-                      label: Text(m.label),
-                      tooltip: m.description,
-                    ),
-                  )
-                  .toList(),
-              selected: {_draft.mode},
-              onSelectionChanged: (s) =>
-                  setState(() => _draft = _draft.copyWith(mode: s.first)),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 16),
-              child: Text(
-                _draft.mode.description,
-                style: const TextStyle(color: Colors.white38, fontSize: 12),
-              ),
-            ),
-
-            // ── Haptic feedback ──────────────────────────────────────────
-            _settingsTile(
-              title: 'Haptic Feedback',
-              subtitle: 'Vibrate on button press',
-              trailing: Switch(
-                value: _draft.hapticFeedback,
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(hapticFeedback: v)),
-                activeThumbColor: Colors.blueAccent,
-              ),
-            ),
-
-            // ── Gyroscope ────────────────────────────────────────────────
-            _settingsTile(
-              title: 'Gyroscope',
-              subtitle: 'Send gyro data as joystick tilt',
-              trailing: Switch(
-                value: _gyro,
-                onChanged: (v) => setState(() => _gyro = v),
-                activeThumbColor: Colors.tealAccent,
-              ),
-            ),
-
-            const Divider(color: Colors.white12, height: 32),
-
-            // ── Presets ──────────────────────────────────────────────────
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Presets',
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Text(
+                    'Layouts',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-                TextButton.icon(
-                  onPressed: _saveAsNew,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Save current'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.blueAccent,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 8),
-            ...presets.map((p) => _presetTile(p)),
+            Expanded(
+              child: ListView.builder(
+                controller: scroll,
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                itemCount: layouts.length,
+                itemBuilder: (_, i) {
+                  final l = layouts[i];
+                  final isActive = l.id == activeId;
+                  final isDefault =
+                      l.id.startsWith('standard_gamepad') ||
+                      l.id.startsWith('fps_layout') ||
+                      l.id.startsWith('racing_layout');
 
-            const SizedBox(height: 24),
-
-            // ── Apply / Cancel ───────────────────────────────────────────
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white54,
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? Colors.blueAccent.withAlpha(40)
+                          : const Color(0xFF374151),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isActive ? Colors.blueAccent : Colors.white12,
+                      ),
                     ),
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _apply,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      leading: Icon(
+                        isActive
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        color: isActive ? Colors.blueAccent : Colors.white38,
+                      ),
+                      title: Text(
+                        l.name,
+                        style: TextStyle(
+                          color: isActive ? Colors.blueAccent : Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${l.mode.toUpperCase()}  •  ${l.elements.length} elements',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Rename
+                          IconButton(
+                            icon: const Icon(
+                              Icons.drive_file_rename_outline,
+                              color: Colors.white38,
+                              size: 18,
+                            ),
+                            tooltip: 'Rename',
+                            onPressed: () => _renameLayout(context, l),
+                          ),
+                          // Duplicate
+                          IconButton(
+                            icon: const Icon(
+                              Icons.copy_outlined,
+                              color: Colors.white38,
+                              size: 18,
+                            ),
+                            tooltip: 'Duplicate',
+                            onPressed: () {
+                              widget.onDuplicate(l);
+                              setState(() {});
+                            },
+                          ),
+                          // Edit
+                          IconButton(
+                            icon: const Icon(
+                              Icons.edit_outlined,
+                              color: Colors.white54,
+                              size: 18,
+                            ),
+                            tooltip: 'Edit layout',
+                            onPressed: () => widget.onEdit(l),
+                          ),
+                          // Delete (custom only)
+                          if (!isDefault)
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
+                                size: 18,
+                              ),
+                              tooltip: 'Delete',
+                              onPressed: () {
+                                widget.onDelete(l);
+                                setState(() {});
+                              },
+                            ),
+                        ],
+                      ),
+                      onTap: () {
+                        widget.onSelected(l);
+                        Navigator.pop(context);
+                      },
                     ),
-                    child: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Apply'),
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -834,83 +430,53 @@ class _GamepadSettingsSheetState extends State<_GamepadSettingsSheet> {
     );
   }
 
-  Widget _presetTile(GamepadLayout p) {
-    final isActive = p.id == widget.ctrl.activeLayout.id;
-    final isCustom = !p.isBuiltIn;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isActive
-            ? Colors.blueAccent.withAlpha(40)
-            : const Color(0xFF374151),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isActive ? Colors.blueAccent : Colors.white12,
+  Future<void> _renameLayout(BuildContext ctx, GamepadLayout layout) async {
+    final ctrl = TextEditingController(text: layout.name);
+    final newName = await showDialog<String>(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        title: const Text(
+          'Rename Layout',
+          style: TextStyle(color: Colors.white, fontSize: 15),
         ),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        title: Text(
-          p.name,
-          style: TextStyle(
-            color: isActive ? Colors.blueAccent : Colors.white,
-            fontWeight: FontWeight.w600,
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'New name',
+            hintStyle: TextStyle(color: Colors.white38),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.blueAccent),
+            ),
           ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
         ),
-        subtitle: Text(
-          '${p.mode.label}  •  ${p.hapticFeedback ? "Haptic" : "No haptic"}',
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-        leading: Icon(
-          isActive ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-          color: isActive ? Colors.blueAccent : Colors.white38,
-        ),
-        trailing: isCustom
-            ? IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.redAccent,
-                  size: 20,
-                ),
-                onPressed: () async {
-                  await widget.ctrl.deleteCustomLayout(p);
-                  setState(() {});
-                },
-              )
-            : null,
-        onTap: () {
-          setState(() {
-            _draft = p.copyWith(hapticFeedback: p.hapticFeedback);
-            _gyro = p.gyroEnabled;
-          });
-        },
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text(
+              'Rename',
+              style: TextStyle(color: Colors.blueAccent),
+            ),
+          ),
+        ],
       ),
     );
-  }
-
-  Widget _settingsTile({
-    required String title,
-    required String subtitle,
-    required Widget trailing,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF374151),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-        trailing: trailing,
-      ),
-    );
+    if (newName != null && newName.isNotEmpty) {
+      widget.onRename(layout, newName);
+      setState(() {});
+    }
   }
 }
