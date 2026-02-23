@@ -67,12 +67,12 @@ class TaskManager:
             return {'type': 'task_manager', 'action': 'error', 'message': f'Failed to list processes: {str(e)}'}
     
     def _end_process(self, pid: int) -> dict:
-        """Terminate a process by PID"""
+        """Terminate a process by PID, retrying with UAC if access is denied."""
         try:
             process = psutil.Process(pid)
             name = process.name()
             
-            # Terminate the process
+            # Attempt normal (non-elevated) termination first
             process.terminate()
             
             # Wait up to 3 seconds for graceful termination
@@ -94,10 +94,45 @@ class TaskManager:
         except psutil.NoSuchProcess:
             return {'type': 'task_manager', 'action': 'error', 'message': 'Process not found'}
         except psutil.AccessDenied:
-            return {'type': 'task_manager', 'action': 'error', 'message': 'Access denied - cannot terminate system process'}
+            # Need elevation — request UAC to kill this process
+            logger.info(f"Access denied for PID {pid}, requesting elevation...")
+            return self._end_process_elevated(pid)
         except Exception as e:
             logger.error(f"Error ending process: {e}")
             return {'type': 'task_manager', 'action': 'error', 'message': f'Failed to end process: {str(e)}'}
+    
+    def _end_process_elevated(self, pid: int) -> dict:
+        """Retry process termination via UAC elevation."""
+        try:
+            from utils.elevate import run_elevated
+            result = run_elevated("--kill-pid", str(pid))
+            
+            if result["success"]:
+                logger.info(f"Elevated kill succeeded for PID {pid}")
+                return {
+                    'type': 'task_manager',
+                    'action': 'process_ended',
+                    'pid': pid,
+                    'name': result.get('message', ''),
+                    'elevated': True,
+                }
+            else:
+                logger.warning(f"Elevated kill failed for PID {pid}: {result['message']}")
+                return {
+                    'type': 'task_manager',
+                    'action': 'error',
+                    'message': f"Elevation required — {result['message']}",
+                    'elevation_required': True,
+                }
+        except Exception as e:
+            logger.error(f"Error during elevated process kill: {e}")
+            return {
+                'type': 'task_manager',
+                'action': 'error',
+                'message': f'Failed to terminate process (elevation failed): {str(e)}',
+                'elevation_required': True,
+            }
+
     
     def _get_system_info(self) -> dict:
         """Get system resource information"""

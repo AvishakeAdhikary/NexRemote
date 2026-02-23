@@ -2,12 +2,17 @@
 NexRemote - Windows Application
 Main entry point. The GUI application owns the entire lifecycle.
 The server runs in a background thread and can be started/stopped from the UI.
+
+This application runs as a **standard user**.  Operations that require admin
+privileges (firewall rules, killing protected processes) are elevated on
+demand via the Windows UAC dialog — see ``utils/elevate.py``.
 """
 import sys
 import os
 import ctypes
 import atexit
-from PyQt6.QtWidgets import QApplication
+from datetime import datetime
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon
 from utils.paths import get_assets_dir, is_frozen
 
@@ -22,6 +27,7 @@ if sys.platform == 'win32':
         pass
 
 from ui.main_window import MainWindow
+from ui.terms_dialog import TermsDialog
 from core.server import NexRemoteServer
 from core.server_thread import ServerThread
 from utils.logger import setup_logger
@@ -29,6 +35,56 @@ from utils.config import Config
 from security.firewall_config import configure_firewall
 
 logger = setup_logger()
+
+
+def _show_terms(app: QApplication, config: Config) -> bool:
+    """
+    Show the Terms & Privacy dialog if the user has not yet accepted.
+    Returns True if the user has accepted (now or previously).
+    """
+    if config.get('terms_accepted', False):
+        return True
+
+    dlg = TermsDialog()
+    result = dlg.exec()
+
+    if result == TermsDialog.DialogCode.Accepted:
+        config.set('terms_accepted', True)
+        config.set('terms_accepted_at', datetime.now().isoformat())
+        config.save()
+        logger.info("User accepted Terms & Privacy Policy.")
+        return True
+    else:
+        logger.info("User declined Terms & Privacy Policy — exiting.")
+        return False
+
+
+def _configure_firewall_first_launch(config: Config):
+    """
+    On first launch (or if firewall hasn't been configured yet), trigger a
+    UAC prompt to set up Windows Firewall rules.  If the user declines,
+    show a one-time info dialog and carry on.
+    """
+    if config.get('firewall_configured', False):
+        return
+
+    logger.info("First launch — requesting firewall configuration via UAC...")
+    result = configure_firewall()
+
+    if result["success"]:
+        config.set('firewall_configured', True)
+        config.save()
+    else:
+        # Don't block the app — just inform the user once.
+        QMessageBox.information(
+            None,
+            "Firewall Configuration",
+            "NexRemote could not configure Windows Firewall automatically.\n\n"
+            "If you declined the permission prompt, the app will still work "
+            "on your local network, but you may need to allow ports 8765–8766 "
+            "(TCP) and 37020 (UDP) manually in Windows Firewall settings.\n\n"
+            "You can retry from Settings → Network → Configure Firewall.",
+        )
 
 
 def main():
@@ -54,13 +110,12 @@ def main():
         # Load configuration
         config = Config()
 
-        # Configure Windows Firewall (best-effort)
-        logger.info("Configuring firewall rules...")
-        if not configure_firewall():
-            logger.warning(
-                "Failed to configure firewall automatically. "
-                "Manual configuration may be needed."
-            )
+        # ── First-launch gate: Terms & Privacy Policy ──────────────────
+        if not _show_terms(app, config):
+            return 0  # user declined — clean exit
+
+        # ── First-launch firewall setup (UAC, best-effort) ─────────────
+        _configure_firewall_first_launch(config)
 
         # Initialize server (does NOT start yet — MainWindow controls lifecycle)
         server = NexRemoteServer(config)

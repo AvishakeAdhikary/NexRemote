@@ -11,6 +11,7 @@ class VirtualGamepad:
     """XInput virtual gamepad controller"""
     
     def __init__(self):
+        self.error_reason = None
         try:
             self.gamepad = vg.VX360Gamepad()
             self.active = True
@@ -18,6 +19,20 @@ class VirtualGamepad:
         except Exception as e:
             logger.error(f"Failed to initialize gamepad: {e}")
             self.active = False
+            # Classify the failure to help the UI show a useful message
+            err = str(e).lower()
+            if "vigem" in err or "bus" in err or "driver" in err:
+                self.error_reason = "vigem_driver_missing"
+            else:
+                self.error_reason = str(e)
+    
+    def get_status(self) -> dict:
+        """Return the current availability status for the mobile client."""
+        return {
+            'available': self.active,
+            'error': self.error_reason,
+        }
+
     
     def send_input(self, data: dict):
         """Process gamepad input"""

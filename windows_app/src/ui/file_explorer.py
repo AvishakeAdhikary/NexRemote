@@ -59,6 +59,25 @@ class FileExplorer:
             else:
                 return {'type': 'file_explorer', 'action': 'error', 'message': f'Unknown action: {action}'}
                 
+        except PermissionError as e:
+            logger.warning(f"Permission denied in file explorer: {e}")
+            return {
+                'type': 'file_explorer',
+                'action': 'error',
+                'message': f'Permission denied: {e}',
+                'permission_denied': True,
+                'path': str(getattr(e, 'filename', '')),
+            }
+        except OSError as e:
+            logger.error(f"OS error in file explorer: {e}")
+            err_msg = str(e)
+            is_perm = e.errno in (5, 13)  # ERROR_ACCESS_DENIED, EACCES
+            return {
+                'type': 'file_explorer',
+                'action': 'error',
+                'message': err_msg,
+                'permission_denied': is_perm,
+            }
         except Exception as e:
             logger.error(f"Error handling file explorer request: {e}", exc_info=True)
             return {'type': 'file_explorer', 'action': 'error', 'message': str(e)}

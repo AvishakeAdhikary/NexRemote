@@ -84,6 +84,11 @@ class SettingsDialog(QDialog):
         self.show_notifications_check.setChecked(True)
         layout.addRow("", self.show_notifications_check)
         
+        # View Terms & Privacy Policy
+        terms_btn = QPushButton("View Terms && Privacy Policy")
+        terms_btn.clicked.connect(self._show_terms)
+        layout.addRow("", terms_btn)
+        
         return widget
     
     def create_network_tab(self) -> QWidget:
@@ -112,6 +117,11 @@ class SettingsDialog(QDialog):
         # Enable remote access
         self.remote_access_check = QCheckBox("Enable remote access (outside local network)")
         layout.addRow("", self.remote_access_check)
+        
+        # Firewall configuration (triggers UAC)
+        firewall_btn = QPushButton("Configure Firewall (requires permission)")
+        firewall_btn.clicked.connect(self._configure_firewall)
+        layout.addRow("", firewall_btn)
         
         return widget
     
@@ -244,3 +254,24 @@ class SettingsDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self.devices_list.clear()
             # TODO: Clear from authentication module
+    
+    def _configure_firewall(self):
+        """Request firewall configuration via UAC."""
+        from security.firewall_config import configure_firewall
+        result = configure_firewall()
+        if result["success"]:
+            self.config.set('firewall_configured', True)
+            self.config.save()
+            QMessageBox.information(self, "Firewall", "Firewall rules configured successfully.")
+        else:
+            QMessageBox.warning(
+                self, "Firewall",
+                f"Could not configure firewall:\n{result['message']}\n\n"
+                "You may need to allow the ports manually.",
+            )
+    
+    def _show_terms(self):
+        """Show Terms & Privacy Policy in read-only mode."""
+        from ui.terms_dialog import TermsDialog
+        dlg = TermsDialog(self, read_only=True)
+        dlg.exec()

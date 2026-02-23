@@ -37,6 +37,10 @@ class Config:
             'auto_start': False,
             'minimize_to_tray': True,
             'require_approval': True,
+            # --- Non-admin permission model ---
+            'terms_accepted': False,
+            'terms_accepted_at': None,
+            'firewall_configured': False,
         }
         self.save(config)
         return config
