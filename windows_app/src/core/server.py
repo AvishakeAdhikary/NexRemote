@@ -238,8 +238,24 @@ class NexRemoteServer(QObject):
                 self.keyboard.send_key(data)
             elif msg_type == 'mouse':
                 self.mouse.send_input(data)
-            elif msg_type == 'gamepad':
+            elif msg_type in ('gamepad', 'gamepad_xinput'):
                 self.gamepad.send_input(data)
+            elif msg_type == 'gamepad_dinput':
+                # Ensure dinput mode is active then relay input
+                self.gamepad.switch_mode('dinput')
+                self.gamepad.send_input(data)
+            elif msg_type == 'gamepad_android':
+                # Android mode: input is handled natively on device; server is a no-op
+                pass
+            elif msg_type == 'gamepad_mode':
+                # Client requests a mode change: { type, mode: 'xinput'|'dinput'|'android' }
+                new_mode = data.get('mode', 'xinput')
+                self.gamepad.switch_mode(new_mode)
+                await self._send_response(client_id, {
+                    'type': 'gamepad_mode',
+                    'mode': new_mode,
+                    'status': self.gamepad.get_status(),
+                })
             elif msg_type == 'camera':
                 await self._handle_camera(client_id, data)
             elif msg_type == 'file_explorer':
@@ -633,15 +649,19 @@ class NexRemoteServer(QObject):
     
     def get_capabilities(self) -> dict:
         """Return server capabilities"""
+        gamepad_status = self.gamepad.get_status()
         return {
             "keyboard": True,
             "mouse": True,
             "gamepad": True,
+            "gamepad_available": gamepad_status.get('available', False),
+            "gamepad_mode": gamepad_status.get('mode', 'xinput'),
+            "gamepad_modes": ["xinput", "dinput", "android"],
             "screen_streaming": True,
             "camera_streaming": True,
             "file_transfer": True,
             "clipboard": True,
-            "multi_display": True
+            "multi_display": True,
         }
     
     def _on_discovery_request(self, addr):

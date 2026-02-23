@@ -1,34 +1,34 @@
 import 'package:flutter/material.dart';
 import 'layout_manager.dart';
-import '../input/gamepad_controller.dart';
+import '../input/gamepad_controller.dart' hide GamepadLayout;
 
 class LayoutWidget extends StatelessWidget {
   final GamepadLayout layout;
   final GamepadController gamepadController;
-  
+
   const LayoutWidget({
     Key? key,
     required this.layout,
     required this.gamepadController,
   }) : super(key: key);
-  
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    
+
     return Stack(
       children: layout.elements.map((element) {
         return _buildElement(element, size);
       }).toList(),
     );
   }
-  
+
   Widget _buildElement(LayoutElement element, Size screenSize) {
     final left = element.position['x']! * screenSize.width;
     final top = element.position['y']! * screenSize.height;
-    
+
     Widget child;
-    
+
     switch (element.type) {
       case 'button':
         child = _buildButton(element);
@@ -48,22 +48,21 @@ class LayoutWidget extends StatelessWidget {
       default:
         child = Container();
     }
-    
-    return Positioned(
-      left: left,
-      top: top,
-      child: child,
-    );
+
+    return Positioned(left: left, top: top, child: child);
   }
-  
+
   Widget _buildButton(LayoutElement element) {
     final width = (element.size as Map)['width']?.toDouble() ?? 60.0;
     final height = (element.size as Map)['height']?.toDouble() ?? 60.0;
-    
+
     return GestureDetector(
-      onTapDown: (_) => _handleButtonPress(element.action ?? element.label ?? ''),
-      onTapUp: (_) => _handleButtonRelease(element.action ?? element.label ?? ''),
-      onTapCancel: () => _handleButtonRelease(element.action ?? element.label ?? ''),
+      onTapDown: (_) =>
+          _handleButtonPress(element.action ?? element.label ?? ''),
+      onTapUp: (_) =>
+          _handleButtonRelease(element.action ?? element.label ?? ''),
+      onTapCancel: () =>
+          _handleButtonRelease(element.action ?? element.label ?? ''),
       child: Container(
         width: width,
         height: height,
@@ -84,12 +83,10 @@ class LayoutWidget extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildJoystick(LayoutElement element) {
-    final size = element.size is int 
-        ? (element.size as int).toDouble() 
-        : 100.0;
-    
+    final size = element.size is int ? (element.size as int).toDouble() : 100.0;
+
     return Container(
       width: size,
       height: size,
@@ -102,12 +99,10 @@ class LayoutWidget extends StatelessWidget {
       // For now, this is a placeholder
     );
   }
-  
+
   Widget _buildDPad(LayoutElement element) {
-    final size = element.size is int 
-        ? (element.size as int).toDouble() 
-        : 120.0;
-    
+    final size = element.size is int ? (element.size as int).toDouble() : 120.0;
+
     return SizedBox(
       width: size,
       height: size,
@@ -141,7 +136,7 @@ class LayoutWidget extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildDPadButton(String direction, double size) {
     return GestureDetector(
       onTapDown: (_) => gamepadController.sendDPad(direction, true),
@@ -154,14 +149,11 @@ class LayoutWidget extends StatelessWidget {
           color: Colors.grey[800],
           border: Border.all(color: Colors.blue, width: 2),
         ),
-        child: Icon(
-          _getDPadIcon(direction),
-          color: Colors.blue,
-        ),
+        child: Icon(_getDPadIcon(direction), color: Colors.blue),
       ),
     );
   }
-  
+
   IconData _getDPadIcon(String direction) {
     switch (direction) {
       case 'UP':
@@ -176,14 +168,12 @@ class LayoutWidget extends StatelessWidget {
         return Icons.circle;
     }
   }
-  
+
   Widget _buildFaceButtons(LayoutElement element) {
-    final size = element.size is int 
-        ? (element.size as int).toDouble() 
-        : 120.0;
-    
+    final size = element.size is int ? (element.size as int).toDouble() : 120.0;
+
     final buttonSize = size / 3;
-    
+
     return SizedBox(
       width: size,
       height: size,
@@ -217,7 +207,7 @@ class LayoutWidget extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildFaceButton(String label, Color color, double size) {
     return GestureDetector(
       onTapDown: (_) => gamepadController.sendButton(label, true),
@@ -244,15 +234,18 @@ class LayoutWidget extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildTrigger(LayoutElement element) {
     final width = (element.size as Map)['width']?.toDouble() ?? 60.0;
     final height = (element.size as Map)['height']?.toDouble() ?? 30.0;
-    
+
     return GestureDetector(
-      onTapDown: (_) => gamepadController.sendButton(element.trigger ?? '', true),
-      onTapUp: (_) => gamepadController.sendButton(element.trigger ?? '', false),
-      onTapCancel: () => gamepadController.sendButton(element.trigger ?? '', false),
+      onTapDown: (_) =>
+          gamepadController.sendButton(element.trigger ?? '', true),
+      onTapUp: (_) =>
+          gamepadController.sendButton(element.trigger ?? '', false),
+      onTapCancel: () =>
+          gamepadController.sendButton(element.trigger ?? '', false),
       child: Container(
         width: width,
         height: height,
@@ -274,7 +267,7 @@ class LayoutWidget extends StatelessWidget {
       ),
     );
   }
-  
+
   void _handleButtonPress(String action) {
     if (action.startsWith('keyboard_')) {
       // Keyboard action
@@ -289,7 +282,7 @@ class LayoutWidget extends StatelessWidget {
       gamepadController.sendButton(action, true);
     }
   }
-  
+
   void _handleButtonRelease(String action) {
     if (action.startsWith('keyboard_')) {
       final key = action.substring(9);

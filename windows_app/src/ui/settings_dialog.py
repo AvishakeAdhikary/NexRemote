@@ -118,12 +118,30 @@ class SettingsDialog(QDialog):
         self.remote_access_check = QCheckBox("Enable remote access (outside local network)")
         layout.addRow("", self.remote_access_check)
         
-        # Firewall configuration (triggers UAC)
+        # Firewall network profile
+        from PyQt6.QtWidgets import QComboBox
+        self.firewall_profile_combo = QComboBox()
+        self.firewall_profile_combo.addItems([
+            "Private networks only (recommended)",
+            "Private + Public networks",
+            "All profiles (domain, private, public)",
+        ])
+        # Load saved profile index
+        _profile_index = {
+            'private': 0,
+            'public': 1,
+            'all': 2,
+        }.get(self.config.get('firewall_profile', 'private'), 0)
+        self.firewall_profile_combo.setCurrentIndex(_profile_index)
+        layout.addRow("Network Access:", self.firewall_profile_combo)
+        
+        # Firewall configuration button (triggers UAC)
         firewall_btn = QPushButton("Configure Firewall (requires permission)")
         firewall_btn.clicked.connect(self._configure_firewall)
         layout.addRow("", firewall_btn)
         
         return widget
+
     
     def create_security_tab(self) -> QWidget:
         """Create security settings tab"""
@@ -258,11 +276,14 @@ class SettingsDialog(QDialog):
     def _configure_firewall(self):
         """Request firewall configuration via UAC."""
         from security.firewall_config import configure_firewall
-        result = configure_firewall()
+        _profiles = ['private', 'public', 'all']
+        profile = _profiles[self.firewall_profile_combo.currentIndex()]
+        result = configure_firewall(profile=profile)
         if result["success"]:
             self.config.set('firewall_configured', True)
+            self.config.set('firewall_profile', profile)
             self.config.save()
-            QMessageBox.information(self, "Firewall", "Firewall rules configured successfully.")
+            QMessageBox.information(self, "Firewall", result["message"])
         else:
             QMessageBox.warning(
                 self, "Firewall",

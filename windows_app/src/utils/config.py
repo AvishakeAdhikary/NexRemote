@@ -41,6 +41,7 @@ class Config:
             'terms_accepted': False,
             'terms_accepted_at': None,
             'firewall_configured': False,
+            'firewall_profile': 'private',
         }
         self.save(config)
         return config

@@ -34,10 +34,21 @@ def _exe_path() -> str:
 def firewall_add(
     tcp_port: str = DEFAULT_TCP_PORT,
     udp_port: str = DEFAULT_UDP_PORT,
+    profile: str = "private",
 ) -> dict:
-    """Add NexRemote TCP + UDP firewall rules."""
+    """
+    Add NexRemote TCP + UDP firewall rules.
+
+    Parameters
+    ----------
+    profile : str
+        Which network profiles to apply the rule to.
+        One of ``'private'``, ``'public'``, or ``'all'`` (private + public + domain).
+    """
     errors = []
     exe = _exe_path()
+    # netsh expects 'private', 'public', or 'any'
+    netsh_profile = "any" if profile == "all" else profile
 
     # Remove stale rules first (best-effort).
     subprocess.run(
@@ -54,6 +65,7 @@ def firewall_add(
             "dir=in", "action=allow", "protocol=TCP",
             f"localport={tcp_port}",
             f"program={exe}",
+            f"profile={netsh_profile}",
             "enable=yes",
         ],
         capture_output=True,
@@ -69,6 +81,7 @@ def firewall_add(
             "dir=in", "action=allow", "protocol=TCP",
             "localport=8766",
             f"program={exe}",
+            f"profile={netsh_profile}",
             "enable=yes",
         ],
         capture_output=True,
@@ -83,6 +96,7 @@ def firewall_add(
             "dir=in", "action=allow", "protocol=UDP",
             f"localport={udp_port}",
             f"program={exe}",
+            f"profile={netsh_profile}",
             "enable=yes",
         ],
         capture_output=True,
@@ -92,7 +106,8 @@ def firewall_add(
 
     if errors:
         return {"success": False, "message": "; ".join(errors), "detail": None}
-    return {"success": True, "message": "Firewall rules configured successfully.", "detail": None}
+    profile_label = {"private": "Private", "public": "Public", "all": "All"}[profile]
+    return {"success": True, "message": f"Firewall rules configured for {profile_label} networks.", "detail": None}
 
 
 def firewall_remove() -> dict:
@@ -150,13 +165,23 @@ def main():
     parser.add_argument("--kill-pid", type=int, default=None)
     parser.add_argument("--tcp-port", default=DEFAULT_TCP_PORT)
     parser.add_argument("--udp-port", default=DEFAULT_UDP_PORT)
+    parser.add_argument(
+        "--firewall-profile",
+        choices=["private", "public", "all"],
+        default="private",
+        help="Which network profiles to apply firewall rules to.",
+    )
     args = parser.parse_args()
 
     result = {"success": False, "message": "No operation specified.", "detail": None}
 
     try:
         if args.firewall_add:
-            result = firewall_add(tcp_port=args.tcp_port, udp_port=args.udp_port)
+            result = firewall_add(
+                tcp_port=args.tcp_port,
+                udp_port=args.udp_port,
+                profile=args.firewall_profile,
+            )
         elif args.firewall_remove:
             result = firewall_remove()
         elif args.kill_pid is not None:

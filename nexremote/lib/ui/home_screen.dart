@@ -31,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _connectionState = state;
       });
     });
-    
+
     _connectionManager.connectedDeviceStream.listen((deviceName) {
       setState(() {
         _connectedDeviceName = deviceName;
@@ -68,7 +68,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: _connectionState == conn.ConnectionState.disconnected
+      floatingActionButton:
+          _connectionState == conn.ConnectionState.disconnected
           ? FloatingActionButton.extended(
               onPressed: () => _navigateToConnection(),
               icon: const Icon(Icons.wifi),
@@ -104,9 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: statusColor.withOpacity(0.2),
-        border: Border(
-          bottom: BorderSide(color: statusColor, width: 2),
-        ),
+        border: Border(bottom: BorderSide(color: statusColor, width: 2)),
       ),
       child: Row(
         children: [
@@ -115,10 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: Text(
               statusText,
-              style: TextStyle(
-                color: statusColor,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
             ),
           ),
           if (_connectionState == conn.ConnectionState.connected)
@@ -202,18 +198,11 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              feature.icon,
-              size: 48,
-              color: feature.color,
-            ),
+            Icon(feature.icon, size: 48, color: feature.color),
             const SizedBox(height: 12),
             Text(
               feature.title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -243,10 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 12),
           Text(
             'Tap the button below to connect to your PC',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[500],
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey[500]),
             textAlign: TextAlign.center,
           ),
         ],
@@ -258,9 +244,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ConnectionScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            ConnectionScreen(connectionManager: _connectionManager),
       ),
     );
 
@@ -273,9 +258,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GamepadScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            GamepadScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -284,9 +268,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TouchpadScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            TouchpadScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -295,9 +278,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FileExplorerScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            FileExplorerScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -306,9 +288,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CameraScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            CameraScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -317,9 +298,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ScreenShareScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            ScreenShareScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -328,9 +308,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MediaControlScreen(
-          connectionManager: _connectionManager,
-        ),
+        builder: (context) =>
+            MediaControlScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -339,18 +318,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TaskManagerScreen(
-          connectionManager: _connectionManager,
-        ),
-      ),
-    );
-  }
-
-  void _showFeature(String featureName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$featureName feature coming soon!'),
-        duration: const Duration(seconds: 2),
+        builder: (context) =>
+            TaskManagerScreen(connectionManager: _connectionManager),
       ),
     );
   }
@@ -358,9 +327,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showSettings() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const SettingsScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
     );
   }
 
