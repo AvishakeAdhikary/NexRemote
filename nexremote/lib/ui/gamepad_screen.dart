@@ -16,12 +16,16 @@ class GamepadScreen extends StatefulWidget {
   State<GamepadScreen> createState() => _GamepadScreenState();
 }
 
+// The three built-in default layout IDs — never deletable by the user.
+const _builtinIds = {'standard_gamepad', 'fps_layout', 'racing_layout'};
+
 class _GamepadScreenState extends State<GamepadScreen> {
   late GamepadController _ctrl;
   final LayoutManager _layoutManager = LayoutManager();
 
   StreamSubscription? _gyroSub;
   bool _gyroEnabled = false;
+  bool _hapticEnabled = true;
   bool _loading = true;
 
   GamepadLayout? get _activeLayout => _layoutManager.activeLayout;
@@ -41,6 +45,7 @@ class _GamepadScreenState extends State<GamepadScreen> {
       setState(() {
         _loading = false;
         _gyroEnabled = _activeLayout?.gyroEnabled ?? false;
+        _hapticEnabled = _activeLayout?.hapticFeedback ?? true;
         if (_gyroEnabled) _startGyro();
       });
 
@@ -75,6 +80,19 @@ class _GamepadScreenState extends State<GamepadScreen> {
     _gyroSub = null;
   }
 
+  // ── Haptic ───────────────────────────────────────────────────────────────
+
+  Future<void> _setHaptic(bool value) async {
+    final layout = _activeLayout;
+    if (layout == null) return;
+    final updated = layout.copyWith(hapticFeedback: value);
+    // Persist — save to custom layouts so the setting sticks
+    await _layoutManager.saveLayout(updated);
+    await _layoutManager.setActiveLayout(updated);
+    _ctrl.setHapticEnabled(value); // sync controller immediately
+    setState(() => _hapticEnabled = value);
+  }
+
   // ── Layout editor ─────────────────────────────────────────────────────────
 
   Future<void> _openEditor() async {
@@ -89,7 +107,7 @@ class _GamepadScreenState extends State<GamepadScreen> {
     if (edited != null && mounted) {
       await _layoutManager.saveLayout(edited);
       await _layoutManager.setActiveLayout(edited);
-      setState(() {});
+      setState(() => _hapticEnabled = edited.hapticFeedback);
     }
   }
 
@@ -119,6 +137,7 @@ class _GamepadScreenState extends State<GamepadScreen> {
           }
           setState(() {
             _gyroEnabled = layout.gyroEnabled;
+            _hapticEnabled = layout.hapticFeedback;
           });
         },
         onRename: (layout, newName) async {
@@ -127,8 +146,28 @@ class _GamepadScreenState extends State<GamepadScreen> {
           // If it was the active layout, update active too
           if (_layoutManager.activeLayout?.id == layout.id) {
             await _layoutManager.setActiveLayout(renamed);
+            setState(() => _hapticEnabled = renamed.hapticFeedback);
           }
           setState(() {});
+        },
+        onCreateNew: () async {
+          Navigator.pop(context); // dismiss sheet
+          final blank = GamepadLayout(
+            id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+            name: 'My Layout',
+            elements: const [],
+          );
+          final edited = await Navigator.push<GamepadLayout>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LayoutEditorScreen(layout: blank),
+            ),
+          );
+          if (edited != null && mounted) {
+            await _layoutManager.saveLayout(edited);
+            await _layoutManager.setActiveLayout(edited);
+            setState(() => _hapticEnabled = edited.hapticFeedback);
+          }
         },
         onEdit: (layout) async {
           Navigator.pop(context);
@@ -195,6 +234,16 @@ class _GamepadScreenState extends State<GamepadScreen> {
           ],
         ),
         actions: [
+          // Haptic toggle
+          IconButton(
+            tooltip: _hapticEnabled ? 'Haptic ON' : 'Haptic OFF',
+            icon: Icon(
+              _hapticEnabled ? Icons.vibration : Icons.phonelink_erase_outlined,
+              color: _hapticEnabled ? Colors.orangeAccent : Colors.white38,
+              size: 20,
+            ),
+            onPressed: () => _setHaptic(!_hapticEnabled),
+          ),
           // Gyro toggle
           IconButton(
             tooltip: _gyroEnabled ? 'Gyro ON' : 'Gyro OFF',
@@ -252,6 +301,7 @@ class _LayoutSelectorSheet extends StatefulWidget {
   final LayoutManager layoutManager;
   final void Function(GamepadLayout) onSelected;
   final void Function(GamepadLayout, String newName) onRename;
+  final void Function() onCreateNew;
   final void Function(GamepadLayout) onEdit;
   final void Function(GamepadLayout) onDelete;
   final void Function(GamepadLayout) onDuplicate;
@@ -260,6 +310,7 @@ class _LayoutSelectorSheet extends StatefulWidget {
     required this.layoutManager,
     required this.onSelected,
     required this.onRename,
+    required this.onCreateNew,
     required this.onEdit,
     required this.onDelete,
     required this.onDuplicate,
@@ -298,16 +349,29 @@ class _LayoutSelectorSheetState extends State<_LayoutSelectorSheet> {
                 ),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
               child: Row(
                 children: [
-                  Text(
+                  const Text(
                     'Layouts',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => widget.onCreateNew(),
+                    icon: const Icon(
+                      Icons.add,
+                      size: 16,
+                      color: Colors.blueAccent,
+                    ),
+                    label: const Text(
+                      'New',
+                      style: TextStyle(color: Colors.blueAccent, fontSize: 13),
                     ),
                   ),
                 ],
@@ -322,10 +386,8 @@ class _LayoutSelectorSheetState extends State<_LayoutSelectorSheet> {
                 itemBuilder: (_, i) {
                   final l = layouts[i];
                   final isActive = l.id == activeId;
-                  final isDefault =
-                      l.id.startsWith('standard_gamepad') ||
-                      l.id.startsWith('fps_layout') ||
-                      l.id.startsWith('racing_layout');
+                  // Only the three original built-in layouts are protected
+                  final isDefault = _builtinIds.contains(l.id);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),

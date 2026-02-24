@@ -199,6 +199,27 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
     _pushHistory();
   }
 
+  // ── Refit all elements into view ────────────────────────────────────────
+
+  /// Clamps every element so its right and bottom edges lie within [0, 1].
+  /// Uses the canvas size (screen minus AppBar) passed from build().
+  void _refitAll(Size screen) {
+    setState(() {
+      _elements = _elements.map((el) {
+        final w = el.width * el.scale;
+        final h = el.height * el.scale;
+        // Maximum safe top-left so the element stays inside the canvas
+        final maxX = (1.0 - w / screen.width).clamp(0.0, 1.0);
+        final maxY = (1.0 - h / screen.height).clamp(0.0, 1.0);
+        final nx = el.x.clamp(0.0, maxX);
+        final ny = el.y.clamp(0.0, maxY);
+        if (nx == el.x && ny == el.y) return el;
+        return el.copyWith(x: nx, y: ny);
+      }).toList();
+    });
+    _pushHistory();
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -256,6 +277,14 @@ class _LayoutEditorScreenState extends State<LayoutEditorScreen> {
               color: _showInspector ? Colors.blueAccent : Colors.white54,
             ),
             onPressed: () => setState(() => _showInspector = !_showInspector),
+          ),
+          IconButton(
+            tooltip: 'Refit all — bring every element back into view',
+            icon: const Icon(
+              Icons.filter_center_focus,
+              color: Colors.amberAccent,
+            ),
+            onPressed: () => _refitAll(size),
           ),
           TextButton(
             onPressed: _saveAndPop,

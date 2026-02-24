@@ -5,8 +5,10 @@ class InputValidator:
     
     def __init__(self):
         self.valid_types = {
-            'keyboard', 'mouse', 'gamepad', 'clipboard',
-            'request_screen', 'file_transfer',
+            'keyboard', 'mouse', 'gamepad',
+            'gamepad_mode', 'gamepad_xinput', 'gamepad_dinput', 'gamepad_android',
+            'macro',
+            'clipboard', 'request_screen', 'file_transfer',
             'screen_share', 'media_control', 'task_manager',
             'camera', 'sensor', 'file_explorer'
         }

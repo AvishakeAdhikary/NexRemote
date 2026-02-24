@@ -12,6 +12,7 @@ class GamepadController {
 
   GamepadLayout _layout = GamepadLayout.defaultXInput;
   bool _presetsLoaded = false;
+  bool? _hapticOverride; // set from LayoutManager when layout changes
 
   GamepadController(this.connectionManager);
 
@@ -19,7 +20,10 @@ class GamepadController {
 
   GamepadLayout get activeLayout => _layout;
   GamepadMode get mode => _layout.mode;
-  bool get hapticEnabled => _layout.hapticFeedback;
+  bool get hapticEnabled => _hapticOverride ?? _layout.hapticFeedback;
+
+  /// Called by the screen to sync the LayoutManager's haptic setting.
+  void setHapticEnabled(bool value) => _hapticOverride = value;
 
   Future<void> loadPresets() async {
     if (_presetsLoaded) return;
@@ -75,7 +79,7 @@ class GamepadController {
   // ── Input senders ──────────────────────────────────────────────────────
 
   void sendButton(String button, bool pressed) {
-    if (pressed && _layout.hapticFeedback) {
+    if (pressed && hapticEnabled) {
       HapticFeedback.lightImpact();
     }
     connectionManager.sendMessage({
@@ -87,7 +91,7 @@ class GamepadController {
   }
 
   void sendDPad(String direction, bool pressed) {
-    if (pressed && _layout.hapticFeedback) {
+    if (pressed && hapticEnabled) {
       HapticFeedback.lightImpact();
     }
     connectionManager.sendMessage({
