@@ -7,7 +7,7 @@ class InputValidator:
         self.valid_types = {
             'keyboard', 'mouse', 'gamepad',
             'gamepad_mode', 'gamepad_xinput', 'gamepad_dinput', 'gamepad_android',
-            'macro',
+            'macro', 'ping', 'pong',
             'clipboard', 'request_screen', 'file_transfer',
             'screen_share', 'media_control', 'task_manager',
             'camera', 'sensor', 'file_explorer'

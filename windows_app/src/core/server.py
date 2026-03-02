@@ -222,16 +222,35 @@ class NexRemoteServer(QObject):
         """Process incoming message from client (runs as independent task)"""
         msg_type = 'unknown'
         try:
+            # ── Fast-path: plain JSON ping (not encrypted) ──────────────
+            try:
+                plain = json.loads(message)
+                if isinstance(plain, dict) and plain.get('type') == 'ping':
+                    ws = self.clients.get(client_id)
+                    if ws:
+                        await ws.send(json.dumps({"type": "pong"}))
+                    return
+            except (json.JSONDecodeError, TypeError):
+                pass  # Not plain JSON — continue with decryption
+
             # Decrypt message
             decrypted = self.encryption.decrypt(message)
             data = json.loads(decrypted)
             
             msg_type = data.get('type', 'unknown')
+
+            # Handle ping even if it was encrypted
+            if msg_type == 'ping':
+                ws = self.clients.get(client_id)
+                if ws:
+                    await ws.send(json.dumps({"type": "pong"}))
+                return
             
             # Validate input
             if not self.input_validator.validate(data):
                 logger.warning(f"Invalid message from {client_id}: {msg_type}")
                 return
+
             
             # Route to appropriate handler
             if msg_type == 'keyboard':

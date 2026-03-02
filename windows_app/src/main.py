@@ -12,6 +12,17 @@ import os
 import ctypes
 import atexit
 from datetime import datetime
+
+# ── Elevated sub-process entrypoint (frozen exe only) ──────────────────────
+# When NexRemote.exe is launched with --run-elevated via UAC, skip the GUI
+# entirely and run the elevated helper directly.
+if '--run-elevated' in sys.argv:
+    # Strip our flag so elevated_ops sees a clean argv
+    sys.argv.remove('--run-elevated')
+    from utils.elevated_ops import main as _elevated_main
+    _elevated_main()
+    sys.exit(0)
+
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon
 from utils.paths import get_assets_dir, is_frozen

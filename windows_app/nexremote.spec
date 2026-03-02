@@ -19,6 +19,7 @@ a = Analysis(
     datas=[
         ('src/assets', 'assets'),
         ('src/data', 'data'),
+        ('src/utils/elevated_ops.py', 'utils'),
     ],
     hiddenimports=[
         'PyQt6.sip',
@@ -35,6 +36,7 @@ a = Analysis(
         'qrcode',
         'PIL',
         'cryptography',
+        'psutil',
     ],
     hookspath=[],
     hooksconfig={},

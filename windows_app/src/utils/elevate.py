@@ -36,13 +36,20 @@ def is_admin() -> bool:
 
 def _get_elevated_ops_script() -> str:
     """Return the absolute path to ``elevated_ops.py``."""
-    return str(Path(__file__).resolve().parent / "elevated_ops.py")
+    if getattr(sys, 'frozen', False):
+        # In a frozen build, elevated_ops.py lives inside the MEIPASS bundle
+        return str(Path(sys._MEIPASS) / 'utils' / 'elevated_ops.py')  # type: ignore
+    return str(Path(__file__).resolve().parent / 'elevated_ops.py')
 
 
 def run_elevated(*args: str, wait: bool = True, timeout: int = 30) -> dict:
     """
     Launch ``elevated_ops.py`` with the given CLI arguments under a UAC
     prompt.
+
+    In a frozen (PyInstaller) build the main exe is re-launched with a
+    ``--run-elevated`` prefix instead, so no separate Python interpreter is
+    needed.
 
     Parameters
     ----------
@@ -62,42 +69,51 @@ def run_elevated(*args: str, wait: bool = True, timeout: int = 30) -> dict:
         If the user declines the UAC prompt, ``success`` is ``False`` and
         ``message`` explains what happened.
     """
-    script = _get_elevated_ops_script()
-    if not os.path.isfile(script):
-        return {
-            "success": False,
-            "message": "Elevated helper script not found.",
-            "detail": script,
-        }
-
-    # We use a temp file for the elevated process to write its result into,
-    # because we have no stdout/stderr handle when launching via ShellExecuteW.
+    # Temp file for the elevated process to write its JSON result into.
     result_file = Path(tempfile.mktemp(suffix=".json", prefix="nexremote_elev_"))
-
-    # Build the command that the elevated process will run.
-    # On a frozen exe, sys.executable IS the app — so we use pythonw/python
-    # from the venv instead.  If frozen we would bundle elevated_ops as its
-    # own small exe; for dev mode we just call the current interpreter.
-    python = sys.executable
-    cmd_args = [
-        script,
-        "--result-file", str(result_file),
-        *args,
-    ]
-    params = " ".join(f'"{a}"' for a in [python, *cmd_args])
 
     logger.info(f"Requesting UAC elevation for: {' '.join(args)}")
 
     try:
-        # ShellExecuteW returns an HINSTANCE > 32 on success.
-        ret = ctypes.windll.shell32.ShellExecuteW(
-            None,       # hwnd
-            "runas",    # verb — triggers UAC
-            python,     # executable
-            " ".join(f'"{a}"' for a in cmd_args),  # parameters
-            None,       # working directory
-            0,          # SW_HIDE — don't flash a console
-        )
+        if getattr(sys, 'frozen', False):
+            # ── Frozen exe: re-launch OURSELVES with --run-elevated ────
+            exe = sys.executable  # NexRemote.exe
+            cmd_args_str = ' '.join(
+                f'"{a}"' for a in [
+                    '--run-elevated',
+                    '--result-file', str(result_file),
+                    *args,
+                ]
+            )
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None, 'runas', exe, cmd_args_str, None, 0,
+            )
+        else:
+            # ── Dev mode: launch elevated_ops.py with the Python interpreter
+            script = _get_elevated_ops_script()
+            if not os.path.isfile(script):
+                return {
+                    'success': False,
+                    'message': 'Elevated helper script not found.',
+                    'detail': script,
+                }
+
+            python = sys.executable
+            cmd_args = [
+                script,
+                '--result-file', str(result_file),
+                *args,
+            ]
+            cmd_args_str = ' '.join(f'"{a}"' for a in cmd_args)
+
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None,       # hwnd
+                'runas',    # verb — triggers UAC
+                python,     # executable
+                cmd_args_str,  # parameters
+                None,       # working directory
+                0,          # SW_HIDE
+            )
 
         if ret <= 32:
             # User declined UAC or some other shell error.
