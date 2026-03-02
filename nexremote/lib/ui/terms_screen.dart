@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// First-launch Terms & Privacy gate.
@@ -164,14 +165,46 @@ class _TermsScreenState extends State<TermsScreen>
   }
 
   Widget _docView(String markdown) {
-    return SingleChildScrollView(
+    return Markdown(
+      data: markdown,
       padding: const EdgeInsets.all(16),
-      child: Text(
-        markdown,
-        style: const TextStyle(
-          color: Colors.white70,
-          fontSize: 13,
-          height: 1.5,
+      styleSheet: MarkdownStyleSheet(
+        h1: const TextStyle(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+        ),
+        h2: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+        h3: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+        p: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+        listBullet: const TextStyle(color: Colors.white70, fontSize: 13),
+        tableHead: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+        tableBody: const TextStyle(color: Colors.white70, fontSize: 12),
+        tableBorder: TableBorder.all(color: Colors.white24, width: 0.5),
+        horizontalRuleDecoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Colors.white24)),
+        ),
+        strong: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+        blockquoteDecoration: BoxDecoration(
+          color: Colors.white.withAlpha(10),
+          border: const Border(
+            left: BorderSide(color: Colors.blueAccent, width: 3),
+          ),
         ),
       ),
     );

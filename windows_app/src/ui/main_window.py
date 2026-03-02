@@ -67,6 +67,11 @@ class MainWindow(QMainWindow):
         self.server.client_connected.connect(self.on_client_connected)
         self.server.client_disconnected.connect(self.on_client_disconnected)
 
+        # Connect approval signal — show dialog when a new device wants to connect
+        self.server.connection_manager.approval_requested.connect(
+            self._on_approval_requested
+        )
+
         self.setup_ui()
         self.setup_tray_icon()
 
@@ -377,11 +382,28 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Device disconnected")
         self.tray.update_client_count(self.clients_list.count())
 
+    # ── Connection approval ────────────────────────────────────────────────
+
+    def _on_approval_requested(self, device_id: str, device_name: str,
+                                future, loop):
+        """Show approval dialog when a new device requests connection."""
+        from ui.connection_dialog import ConnectionApprovalDialog
+
+        # Bring the window to front so the user notices
+        self.show()
+        self.activateWindow()
+        self.raise_()
+
+        dialog = ConnectionApprovalDialog(
+            device_id, device_name, future, loop, parent=self
+        )
+        dialog.exec()
+
     # ─── Dialogs ─────────────────────────────────────────────────────────
 
     def show_settings(self):
         """Show settings dialog"""
-        dialog = SettingsDialog(self.config, self)
+        dialog = SettingsDialog(self.config, authenticator=self.server.authenticator, parent=self)
         if dialog.exec():
             logger.info("Settings updated")
             # Refresh port / IP labels

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/connection_manager.dart' as conn;
 import '../utils/logger.dart';
 import 'connection_screen.dart';
@@ -70,10 +71,24 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton:
           _connectionState == conn.ConnectionState.disconnected
-          ? FloatingActionButton.extended(
-              onPressed: () => _navigateToConnection(),
-              icon: const Icon(Icons.wifi),
-              label: const Text('Connect to PC'),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'usb_connect',
+                  onPressed: () => _connectViaUsb(),
+                  icon: const Icon(Icons.usb),
+                  label: const Text('USB'),
+                  backgroundColor: Colors.green,
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'wifi_connect',
+                  onPressed: () => _navigateToConnection(),
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('Wi-Fi'),
+                ),
+              ],
             )
           : null,
     );
@@ -218,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(
             Icons.cast_connected,
             size: 120,
-            color: Colors.blue.withOpacity(0.7),
+            color: Colors.blue.withValues(alpha: 0.7),
           ),
           const SizedBox(height: 24),
           Text(
@@ -231,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Tap the button below to connect to your PC',
+            'Connect via Wi-Fi or USB tethering',
             style: TextStyle(fontSize: 16, color: Colors.grey[500]),
             textAlign: TextAlign.center,
           ),
@@ -252,6 +267,218 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result == true) {
       Logger.info('Connected successfully');
     }
+  }
+
+  void _connectViaUsb() async {
+    final scaffoldMsg = ScaffoldMessenger.of(context);
+    scaffoldMsg.showSnackBar(
+      const SnackBar(
+        content: Text('Connecting via USB (ADB)...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    final success = await _connectionManager.connectUsb(
+      'nexremote-device',
+      'NexRemote Mobile',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      scaffoldMsg.showSnackBar(
+        const SnackBar(
+          content: Text('Connected via USB!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      // Show guidance dialog
+      _showUsbSetupGuide();
+    }
+  }
+
+  void _showUsbSetupGuide() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Row(
+          children: [
+            Icon(Icons.usb, color: Colors.orange, size: 28),
+            SizedBox(width: 12),
+            Text('USB Setup Required', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'USB connection requires USB Debugging to be enabled '
+                'on your phone and ADB installed on the PC.',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              _guideStep(
+                '1',
+                'Enable Developer Options',
+                'Go to Settings → About Phone → tap "Build Number" 7 times',
+              ),
+              _guideStep(
+                '2',
+                'Enable USB Debugging',
+                'Settings → Developer Options → toggle "USB Debugging"',
+              ),
+              _guideStep(
+                '3',
+                'Connect USB cable',
+                'Connect your phone to the PC with a USB cable',
+              ),
+              _guideStep(
+                '4',
+                'Accept USB debugging prompt',
+                'Tap "Allow" on the RSA fingerprint dialog on your phone',
+              ),
+              _guideStep(
+                '5',
+                'Ensure NexRemote server is running',
+                'The server auto-detects ADB and sets up port forwarding',
+              ),
+              const Divider(color: Colors.white24),
+              const SizedBox(height: 8),
+              const Text(
+                'Quick Actions:',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openAndroidSettings(
+                        'android.settings.APPLICATION_DEVELOPMENT_SETTINGS',
+                      ),
+                      icon: const Icon(
+                        Icons.developer_mode,
+                        color: Colors.green,
+                      ),
+                      label: const Text(
+                        'Developer\nOptions',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.green),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openAndroidSettings(
+                        'android.settings.DEVICE_INFO_SETTINGS',
+                      ),
+                      icon: const Icon(Icons.info_outline, color: Colors.blue),
+                      label: const Text(
+                        'Build\nNumber',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.blue),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _connectViaUsb();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Retry', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _guideStep(String number, String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              number,
+              style: const TextStyle(
+                color: Colors.blue,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openAndroidSettings(String action) {
+    // Use platform channel to open Android settings
+    const platform = MethodChannel('com.nexremote/settings');
+    platform.invokeMethod('openSettings', {'action': action}).catchError((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open settings automatically. '
+            'Please navigate there manually.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    });
   }
 
   void _navigateToGamepad() {

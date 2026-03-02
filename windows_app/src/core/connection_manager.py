@@ -1,6 +1,9 @@
 """
 Connection Manager
-Handles client connections and approval requests
+Handles client connections and approval requests.
+
+The approval_requested signal carries (device_id, device_name, future, loop)
+so the Qt UI can resolve the asyncio.Future in a thread-safe manner.
 """
 import asyncio
 from typing import Dict
@@ -11,29 +14,32 @@ logger = get_logger(__name__)
 
 class ConnectionManager(QObject):
     """Manage client connections and approvals"""
-    
-    approval_requested = pyqtSignal(str, str, object)  # device_id, device_name, future
-    
+
+    # Signal: device_id, device_name, asyncio.Future, asyncio.AbstractEventLoop
+    approval_requested = pyqtSignal(str, str, object, object)
+
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.pending_approvals: Dict[str, asyncio.Future] = {}
-    
+
     async def request_approval(self, device_id: str, device_name: str) -> bool:
         """Request approval for new connection"""
         if not self.config.get('require_approval', True):
             logger.info(f"Auto-approving connection from {device_name} (approval disabled)")
             return True
-        
+
         logger.info(f"Requesting approval for {device_name} ({device_id})")
-        
+
         # Create approval future
-        future = asyncio.Future()
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
         self.pending_approvals[device_id] = future
-        
-        # Emit signal for UI (pass the future so UI can set result)
-        self.approval_requested.emit(device_id, device_name, future)
-        
+
+        # Emit signal for UI — pass the loop so the dialog can use
+        # loop.call_soon_threadsafe() to set the result safely.
+        self.approval_requested.emit(device_id, device_name, future, loop)
+
         # Wait for approval (with timeout)
         try:
             approved = await asyncio.wait_for(future, timeout=60.0)
@@ -43,19 +49,20 @@ class ConnectionManager(QObject):
             logger.warning(f"Approval timeout for {device_name}")
             return False
         finally:
-            if device_id in self.pending_approvals:
-                del self.pending_approvals[device_id]
-    
+            self.pending_approvals.pop(device_id, None)
+
     def approve_connection(self, device_id: str):
-        """Approve pending connection"""
-        if device_id in self.pending_approvals:
-            if not self.pending_approvals[device_id].done():
-                self.pending_approvals[device_id].set_result(True)
-                logger.info(f"Approved connection for device {device_id}")
-    
+        """Approve pending connection (programmatic)"""
+        future = self.pending_approvals.get(device_id)
+        if future and not future.done():
+            loop = future.get_loop()
+            loop.call_soon_threadsafe(future.set_result, True)
+            logger.info(f"Approved connection for device {device_id}")
+
     def reject_connection(self, device_id: str):
-        """Reject pending connection"""
-        if device_id in self.pending_approvals:
-            if not self.pending_approvals[device_id].done():
-                self.pending_approvals[device_id].set_result(False)
-                logger.info(f"Rejected connection for device {device_id}")
+        """Reject pending connection (programmatic)"""
+        future = self.pending_approvals.get(device_id)
+        if future and not future.done():
+            loop = future.get_loop()
+            loop.call_soon_threadsafe(future.set_result, False)
+            logger.info(f"Rejected connection for device {device_id}")

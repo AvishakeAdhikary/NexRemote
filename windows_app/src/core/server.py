@@ -12,6 +12,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from core.discovery import DiscoveryService
 from core.connection_manager import ConnectionManager
 from core.certificate_manager import CertificateManager
+from core.usb_detector import AdbManager
 from security.encryption import MessageEncryption
 from security.authentication import DeviceAuthenticator
 from security.audit_logger import AuditLogger
@@ -41,6 +42,7 @@ class NexRemoteServer(QObject):
     client_connected = pyqtSignal(str, str)  # client_id, device_name
     client_disconnected = pyqtSignal(str)
     message_received = pyqtSignal(str, dict)
+    usb_status_changed = pyqtSignal(bool, str)  # connected, device_info
     
     def __init__(self, config):
         super().__init__()
@@ -65,7 +67,9 @@ class NexRemoteServer(QObject):
         
         # Streaming
         self.screen_capture = ScreenCapture(config)
-        self.camera_streamer = CameraStreamer(config)
+        # Multi-camera: dict of CameraStreamer instances keyed by camera_index
+        self._camera_streamers: Dict[int, CameraStreamer] = {}
+        self._camera_config = config  # Store for lazy CameraStreamer creation
         
         # File system and process management
         self.file_explorer = FileExplorer(config)
@@ -77,8 +81,16 @@ class NexRemoteServer(QObject):
         # Active streaming tasks per client
         # screen tasks keyed by (client_id, mss_monitor_index) for multi-monitor
         self._screen_stream_tasks: dict[tuple[str, int], asyncio.Task] = {}
-        self._camera_stream_tasks: Dict[str, asyncio.Task] = {}
+        # camera stream tasks keyed by (client_id, camera_index) for multi-camera
+        self._camera_stream_tasks: Dict[tuple, asyncio.Task] = {}
         self._media_stream_tasks:  Dict[str, asyncio.Task] = {}
+        
+        # ADB USB connection manager
+        self.adb_manager = AdbManager(
+            server_port=config.get('server_port_insecure', 8766),
+            on_device_connected=self._on_adb_device_connected,
+            on_device_disconnected=self._on_adb_device_disconnected,
+        )
         
         logger.info("Server initialized")
     
@@ -89,6 +101,9 @@ class NexRemoteServer(QObject):
             
             # Start the screen capture thread (always running — low cost when idle)
             self.screen_capture.start()
+            
+            # Start ADB manager for USB connections
+            self.adb_manager.start()
             
             # Start discovery service
             asyncio.create_task(self.discovery.start(self._on_discovery_request))
@@ -172,11 +187,21 @@ class NexRemoteServer(QObject):
             client_id = auth_data.get('device_id')
             device_name = auth_data.get('device_name', 'Unknown')
             
-            # Check if connection should be approved
-            if not await self.connection_manager.request_approval(client_id, device_name):
-                await websocket.send(json.dumps({"type": "connection_rejected"}))
-                logger.info(f"Connection rejected: {device_name}")
-                return
+            # Skip approval if device is already trusted
+            is_trusted = client_id in self.authenticator.trusted_devices
+            
+            if not is_trusted:
+                # Check if connection should be approved
+                if not await self.connection_manager.request_approval(client_id, device_name):
+                    await websocket.send(json.dumps({"type": "connection_rejected"}))
+                    logger.info(f"Connection rejected: {device_name}")
+                    return
+                
+                # Device was approved — add to trusted list for future connections
+                self.authenticator.add_trusted_device(client_id, device_name)
+                logger.info(f"Device trusted: {device_name} ({client_id})")
+            else:
+                logger.info(f"Device already trusted: {device_name} ({client_id})")
             
             # Register client
             self.clients[client_id] = websocket
@@ -210,6 +235,38 @@ class NexRemoteServer(QObject):
                 del self.clients[client_id]
                 self.client_disconnected.emit(client_id)
                 self.audit_logger.log_event("client_disconnected", {"client_id": client_id})
+    
+    def _stop_client_streams(self, client_id: str):
+        """Stop all streaming tasks for a disconnected client."""
+        if not client_id:
+            return
+        
+        # Cancel screen stream tasks for this client
+        screen_keys = [k for k in self._screen_stream_tasks if k[0] == client_id]
+        for key in screen_keys:
+            self._screen_stream_tasks[key].cancel()
+            del self._screen_stream_tasks[key]
+        
+        # Cancel camera stream tasks for this client
+        cam_keys = [k for k in self._camera_stream_tasks if k[0] == client_id]
+        for key in cam_keys:
+            self._camera_stream_tasks[key].cancel()
+            del self._camera_stream_tasks[key]
+        
+        # Clean up unused camera streamers
+        for cam_idx in list(self._camera_streamers.keys()):
+            still_used = any(k[1] == cam_idx for k in self._camera_stream_tasks)
+            if not still_used:
+                try:
+                    self._camera_streamers[cam_idx].stop()
+                except Exception:
+                    pass
+                del self._camera_streamers[cam_idx]
+        
+        # Cancel media stream tasks
+        if client_id in self._media_stream_tasks:
+            self._media_stream_tasks[client_id].cancel()
+            del self._media_stream_tasks[client_id]
     
     async def _safe_process(self, client_id: str, message):
         """Wrapper to catch exceptions in create_task'd message processing"""
@@ -545,13 +602,21 @@ class NexRemoteServer(QObject):
     
     # ─── Camera (server→client streaming) ──────────────────────────────
     
+    def _get_camera_streamer(self, camera_index: int) -> CameraStreamer:
+        """Get or create a CameraStreamer for the given camera index."""
+        if camera_index not in self._camera_streamers:
+            self._camera_streamers[camera_index] = CameraStreamer(self._camera_config)
+        return self._camera_streamers[camera_index]
+
     async def _handle_camera(self, client_id: str, data: dict):
-        """Handle camera requests — stream FROM PC cameras TO client"""
+        """Handle camera requests — supports multiple simultaneous cameras."""
         try:
             action = data.get('action')
             
             if action == 'list_cameras':
-                cameras = await asyncio.to_thread(self.camera_streamer.list_cameras)
+                # Use a temporary streamer for enumeration
+                temp = CameraStreamer(self._camera_config)
+                cameras = await asyncio.to_thread(temp.list_cameras)
                 response = {
                     'type': 'camera',
                     'action': 'camera_list',
@@ -561,52 +626,132 @@ class NexRemoteServer(QObject):
                 
             elif action == 'start':
                 camera_index = data.get('camera_index', 0)
+                streamer = self._get_camera_streamer(camera_index)
                 
-                # Start camera capture thread
-                await asyncio.to_thread(self.camera_streamer.start, camera_index)
+                # Start capture if not already running
+                if not streamer.is_active:
+                    await asyncio.to_thread(streamer.start, camera_index)
                 
-                # Cancel any existing camera stream for this client
-                if client_id in self._camera_stream_tasks:
-                    self._camera_stream_tasks[client_id].cancel()
+                # Cancel existing push task for this (client, cam) pair
+                key = (client_id, camera_index)
+                if key in self._camera_stream_tasks:
+                    self._camera_stream_tasks[key].cancel()
                 
-                # Launch push loop
-                task = asyncio.create_task(self._camera_push_loop(client_id))
-                self._camera_stream_tasks[client_id] = task
+                task = asyncio.create_task(
+                    self._camera_push_loop(client_id, camera_index)
+                )
+                self._camera_stream_tasks[key] = task
                 
-                # Send camera info back
-                info = self.camera_streamer.get_camera_info()
+                info = streamer.get_camera_info()
                 response = {
                     'type': 'camera',
                     'action': 'started',
+                    'camera_index': camera_index,
                     'camera_info': info,
                 }
                 await self._send_response(client_id, response)
-                logger.info(f"Camera streaming started for {client_id} (camera {camera_index})")
+                logger.info(f"Camera {camera_index} streaming started for {client_id}")
+                
+            elif action == 'start_multi':
+                # Start multiple cameras simultaneously
+                indices = data.get('camera_indices', [])
+                for cam_idx in indices:
+                    streamer = self._get_camera_streamer(cam_idx)
+                    if not streamer.is_active:
+                        await asyncio.to_thread(streamer.start, cam_idx)
+                    
+                    key = (client_id, cam_idx)
+                    if key in self._camera_stream_tasks:
+                        self._camera_stream_tasks[key].cancel()
+                    
+                    task = asyncio.create_task(
+                        self._camera_push_loop(client_id, cam_idx)
+                    )
+                    self._camera_stream_tasks[key] = task
+                
+                response = {
+                    'type': 'camera',
+                    'action': 'multi_started',
+                    'camera_indices': indices,
+                }
+                await self._send_response(client_id, response)
+                logger.info(f"Multi-camera started for {client_id}: {indices}")
                 
             elif action == 'stop':
-                if client_id in self._camera_stream_tasks:
-                    self._camera_stream_tasks[client_id].cancel()
-                    del self._camera_stream_tasks[client_id]
-                await asyncio.to_thread(self.camera_streamer.stop)
-                logger.info(f"Camera streaming stopped for {client_id}")
+                camera_index = data.get('camera_index', 0)
+                key = (client_id, camera_index)
+                if key in self._camera_stream_tasks:
+                    self._camera_stream_tasks[key].cancel()
+                    del self._camera_stream_tasks[key]
+                
+                # Stop the streamer only if no other client is using it
+                streamer = self._camera_streamers.get(camera_index)
+                if streamer:
+                    still_used = any(
+                        k[1] == camera_index
+                        for k in self._camera_stream_tasks
+                    )
+                    if not still_used:
+                        await asyncio.to_thread(streamer.stop)
+                        del self._camera_streamers[camera_index]
+                
+                logger.info(f"Camera {camera_index} stopped for {client_id}")
+                
+            elif action == 'stop_all':
+                # Stop all cameras for this client
+                keys_to_remove = [
+                    k for k in self._camera_stream_tasks
+                    if k[0] == client_id
+                ]
+                for key in keys_to_remove:
+                    self._camera_stream_tasks[key].cancel()
+                    del self._camera_stream_tasks[key]
+                
+                # Clean up unused streamers
+                for cam_idx in list(self._camera_streamers.keys()):
+                    still_used = any(
+                        k[1] == cam_idx for k in self._camera_stream_tasks
+                    )
+                    if not still_used:
+                        await asyncio.to_thread(
+                            self._camera_streamers[cam_idx].stop
+                        )
+                        del self._camera_streamers[cam_idx]
+                
+                logger.info(f"All cameras stopped for {client_id}")
                 
             elif action == 'set_camera':
                 camera_index = data.get('camera_index', 0)
-                # Restart with new camera
-                was_streaming = client_id in self._camera_stream_tasks
+                streamer = self._get_camera_streamer(camera_index)
+                
+                was_streaming = any(
+                    k[0] == client_id for k in self._camera_stream_tasks
+                )
+                
+                # Stop existing single-camera tasks for this client
+                keys_to_remove = [
+                    k for k in self._camera_stream_tasks
+                    if k[0] == client_id
+                ]
+                for key in keys_to_remove:
+                    self._camera_stream_tasks[key].cancel()
+                    del self._camera_stream_tasks[key]
+                
+                if not streamer.is_active:
+                    await asyncio.to_thread(streamer.start, camera_index)
+                
                 if was_streaming:
-                    self._camera_stream_tasks[client_id].cancel()
+                    key = (client_id, camera_index)
+                    task = asyncio.create_task(
+                        self._camera_push_loop(client_id, camera_index)
+                    )
+                    self._camera_stream_tasks[key] = task
                 
-                await asyncio.to_thread(self.camera_streamer.start, camera_index)
-                
-                if was_streaming:
-                    task = asyncio.create_task(self._camera_push_loop(client_id))
-                    self._camera_stream_tasks[client_id] = task
-                
-                info = self.camera_streamer.get_camera_info()
+                info = streamer.get_camera_info()
                 response = {
                     'type': 'camera',
                     'action': 'camera_changed',
+                    'camera_index': camera_index,
                     'camera_info': info,
                 }
                 await self._send_response(client_id, response)
@@ -614,28 +759,35 @@ class NexRemoteServer(QObject):
         except Exception as e:
             logger.error(f"Error handling camera: {e}", exc_info=True)
     
-    async def _camera_push_loop(self, client_id: str):
-        """Push camera frames to client as binary messages"""
-        logger.debug(f"Camera push loop started for {client_id}")
+    async def _camera_push_loop(self, client_id: str, camera_index: int = 0):
+        """Push camera frames to client as binary messages.
+        
+        Frame format: CAMF (4 bytes) + camera_index (1 byte) + JPEG bytes
+        """
+        logger.debug(f"Camera push loop started for {client_id} cam={camera_index}")
         
         try:
-            while client_id in self.clients and self.camera_streamer.is_active:
+            streamer = self._camera_streamers.get(camera_index)
+            if not streamer:
+                return
+            
+            cam_header = CAMERA_HEADER + bytes([camera_index & 0xFF])
+            
+            while client_id in self.clients and streamer.is_active:
                 start = asyncio.get_event_loop().time()
                 
-                frame = self.camera_streamer.get_latest_frame()
+                frame = streamer.get_latest_frame()
                 
                 if frame and client_id in self.clients:
                     try:
-                        # Send as binary: CAMF header + JPEG bytes
-                        await self.clients[client_id].send(CAMERA_HEADER + frame)
+                        await self.clients[client_id].send(cam_header + frame)
                     except websockets.exceptions.ConnectionClosed:
                         break
                     except Exception as e:
                         logger.error(f"Error sending camera frame: {e}")
                         break
                 
-                # Pace to camera FPS
-                info = self.camera_streamer.get_camera_info()
+                info = streamer.get_camera_info()
                 fps = info.get('fps', 30) or 30
                 interval = 1.0 / fps
                 elapsed = asyncio.get_event_loop().time() - start
@@ -766,12 +918,32 @@ class NexRemoteServer(QObject):
             self.screen_capture.stop()
         except Exception:
             pass
+        # Stop all camera streamers
+        for streamer in list(self._camera_streamers.values()):
+            try:
+                streamer.stop()
+            except Exception:
+                pass
+        self._camera_streamers.clear()
+        
+        # Stop ADB manager
         try:
-            self.camera_streamer.stop()
+            self.adb_manager.stop()
         except Exception:
             pass
         
         logger.info("Server stopped")
+    
+    def _on_adb_device_connected(self, serial: str, model: str):
+        """Called when an ADB device is connected and port forward set."""
+        info = f"{model} ({serial})"
+        logger.info(f"ADB device connected: {info}")
+        self.usb_status_changed.emit(True, info)
+    
+    def _on_adb_device_disconnected(self, serial: str):
+        """Called when an ADB device is disconnected."""
+        logger.info(f"ADB device disconnected: {serial}")
+        self.usb_status_changed.emit(False, serial)
     
     def handle_clipboard(self, data):
         """Handle clipboard sync"""

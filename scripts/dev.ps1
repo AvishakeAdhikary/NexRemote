@@ -4,6 +4,11 @@
 
 $ErrorActionPreference = "Stop"
 
+# ── UTF-8 everywhere ──
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
+
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $windowsApp = Join-Path $root "windows_app\src"
 $flutterApp = Join-Path $root "nexremote"
@@ -32,6 +37,9 @@ if (-not $flutterExe) {
 Write-Host "[1/2] Starting Windows app (Python)..." -ForegroundColor Green
 $pythonJob = Start-Job -ScriptBlock {
     param($dir)
+    # Set UTF-8 inside the job as well
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
     Set-Location $dir
     & ".venv\Scripts\python.exe" main.py
 } -ArgumentList $windowsApp
@@ -40,6 +48,8 @@ $pythonJob = Start-Job -ScriptBlock {
 Write-Host "[2/2] Starting Flutter app..." -ForegroundColor Green
 $flutterJob = Start-Job -ScriptBlock {
     param($dir)
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
     Set-Location $dir
     flutter run
 } -ArgumentList $flutterApp

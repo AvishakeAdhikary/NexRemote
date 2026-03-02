@@ -71,14 +71,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='src/assets/images/logo.ico',
-    version_info={
-        'CompanyName': 'Neural Nexus Studios',
-        'FileDescription': 'NexRemote - Remote PC Control',
-        'FileVersion': '1.0.0.0',
-        'InternalName': 'NexRemote',
-        'LegalCopyright': '© 2026 Neural Nexus Studios',
-        'OriginalFilename': 'NexRemote.exe',
-        'ProductName': 'NexRemote',
-        'ProductVersion': '1.0.0.0',
-    },
 )

@@ -106,6 +106,50 @@ class ConnectionManager {
     );
   }
 
+  /// Connect via USB using ADB reverse port forwarding.
+  ///
+  /// The PC server runs an ADB manager that sets up:
+  ///   adb reverse tcp:PORT tcp:PORT
+  /// This makes the server reachable from the phone at localhost:PORT.
+  /// The user needs USB debugging enabled on their phone.
+  Future<bool> connectUsb(
+    String deviceId,
+    String deviceName, {
+    int port = 8766,
+  }) async {
+    _intentionalDisconnect = false;
+    _reconnectAttempt = 0;
+
+    // ADB reverse makes the server reachable at localhost on the phone
+    const host = '127.0.0.1';
+
+    Logger.info('Attempting ADB USB connection (localhost:$port)...');
+    _setState(ConnectionState.connecting);
+
+    final success = await _attemptConnection(
+      host,
+      port,
+      deviceId,
+      deviceName,
+      useSecure: false,
+    ).timeout(const Duration(seconds: 5), onTimeout: () => false);
+
+    if (success) {
+      Logger.info('ADB USB connection established via $host:$port');
+      _lastHost = host;
+      _lastSecurePort = null;
+      _lastInsecurePort = port;
+      return true;
+    }
+
+    Logger.warning(
+      'ADB USB connection failed — ensure USB debugging is '
+      'enabled and the PC server is running',
+    );
+    _setState(ConnectionState.disconnected);
+    return false;
+  }
+
   Future<bool> _attemptConnection(
     String host,
     int port,

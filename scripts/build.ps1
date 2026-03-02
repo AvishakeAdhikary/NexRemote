@@ -14,8 +14,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ── UTF-8 ──
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
+
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $windowsApp = Join-Path $root "windows_app\src"
+$windowsAppRoot = Join-Path $root "windows_app"
 $flutterApp = Join-Path $root "nexremote"
 $distDir = Join-Path $root "dist"
 
@@ -41,23 +47,43 @@ if (-not $SkipWindows) {
         Pop-Location
     }
     
-    $specFile = Join-Path $root "windows_app\nexremote.spec"
+    $specFile = Join-Path $windowsAppRoot "nexremote.spec"
     
     if (Test-Path $specFile) {
         Write-Host "  → Running PyInstaller with spec file..." -ForegroundColor DarkGray
-        Push-Location $windowsApp
-        & ".venv\Scripts\python.exe" -m PyInstaller $specFile --distpath (Join-Path $distDir "windows") --workpath (Join-Path $root "build\pyinstaller") --noconfirm
+        # IMPORTANT: Run from windows_app/ (not windows_app/src/) because
+        # the spec file uses paths like 'src/main.py' relative to windows_app/.
+        Push-Location $windowsAppRoot
+        & "$windowsApp\.venv\Scripts\python.exe" -m PyInstaller $specFile `
+            --distpath (Join-Path $distDir "windows") `
+            --workpath (Join-Path $root "build\pyinstaller") `
+            --noconfirm
         Pop-Location
     } else {
         Write-Host "  → Running PyInstaller (auto-config)..." -ForegroundColor DarkGray
-        Push-Location $windowsApp
-        $icoPath = Join-Path $windowsApp "src\assets\images\logo.ico"
-        & ".venv\Scripts\python.exe" -m PyInstaller `
+        Push-Location $windowsAppRoot
+        $icoPath = Join-Path $windowsApp "assets\images\logo.ico"
+        & "$windowsApp\.venv\Scripts\python.exe" -m PyInstaller `
             --name "NexRemote" `
             --icon $icoPath `
             --windowed `
             --onefile `
             --add-data "src\assets;assets" `
+            --add-data "src\data;data" `
+            --add-data "src\utils\elevated_ops.py;utils" `
+            --hidden-import "PyQt6.sip" `
+            --hidden-import "PyQt6.QtCore" `
+            --hidden-import "PyQt6.QtGui" `
+            --hidden-import "PyQt6.QtWidgets" `
+            --hidden-import "websockets" `
+            --hidden-import "mss" `
+            --hidden-import "cv2" `
+            --hidden-import "numpy" `
+            --hidden-import "loguru" `
+            --hidden-import "qrcode" `
+            --hidden-import "PIL" `
+            --hidden-import "cryptography" `
+            --hidden-import "psutil" `
             --distpath (Join-Path $distDir "windows") `
             --workpath (Join-Path $root "build\pyinstaller") `
             --noconfirm `

@@ -14,9 +14,10 @@ logger = get_logger(__name__)
 class SettingsDialog(QDialog):
     """Settings configuration dialog"""
     
-    def __init__(self, config, parent=None):
+    def __init__(self, config, authenticator=None, parent=None):
         super().__init__(parent)
         self.config = config
+        self.authenticator = authenticator
         self.setWindowTitle("Settings")
         self.setMinimumSize(600, 500)
         
@@ -218,11 +219,66 @@ class SettingsDialog(QDialog):
         # Load trusted devices
         # This would load from the authentication module
         self.load_trusted_devices()
+        
+        # Populate certificate information
+        self._load_cert_info()
+    
+    def _load_cert_info(self):
+        """Read the server certificate and display its info."""
+        try:
+            from utils.paths import get_certs_dir
+            from cryptography import x509
+            from cryptography.hazmat.primitives import hashes
+
+            cert_path = get_certs_dir() / 'server.crt'
+            if not cert_path.exists():
+                self.cert_info_label.setText(
+                    "No certificate found.\nClick 'Regenerate Certificate' to create one."
+                )
+                return
+
+            cert_data = cert_path.read_bytes()
+            cert = x509.load_pem_x509_certificate(cert_data)
+
+            fingerprint = cert.fingerprint(hashes.SHA256()).hex()
+            fp_fmt = ':'.join(fingerprint[i:i+2] for i in range(0, len(fingerprint), 2))
+
+            subject = cert.subject.rfc4514_string()
+            not_before = cert.not_valid_before_utc.strftime('%Y-%m-%d')
+            not_after = cert.not_valid_after_utc.strftime('%Y-%m-%d')
+
+            info_text = (
+                f"Subject: {subject}\n"
+                f"Valid: {not_before} \u2192 {not_after}\n"
+                f"SHA-256: {fp_fmt[:47]}..."
+            )
+            self.cert_info_label.setText(info_text)
+            self.cert_info_label.setWordWrap(True)
+        except Exception as e:
+            logger.warning(f"Could not load certificate info: {e}")
+            self.cert_info_label.setText(f"Error reading certificate: {e}")
     
     def load_trusted_devices(self):
-        """Load list of trusted devices"""
-        # TODO: Load from authentication module
-        pass
+        """Load list of trusted devices from the authenticator."""
+        self.devices_list.clear()
+        
+        if not self.authenticator:
+            return
+        
+        import time as _time
+        for device_id, info in self.authenticator.trusted_devices.items():
+            name = info.get('name', 'Unknown')
+            first_ts = info.get('first_connected')
+            last_ts = info.get('last_connected')
+            
+            first_str = _time.strftime('%Y-%m-%d %H:%M', _time.localtime(first_ts)) if first_ts else '?'
+            last_str = _time.strftime('%Y-%m-%d %H:%M', _time.localtime(last_ts)) if last_ts else '?'
+            
+            label = f"{name}  |  ID: {device_id[:12]}…  |  First: {first_str}  |  Last: {last_str}"
+            from PyQt6.QtWidgets import QListWidgetItem
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, device_id)
+            self.devices_list.addItem(item)
     
     def save_settings(self):
         """Save settings to config"""
@@ -256,8 +312,10 @@ class SettingsDialog(QDialog):
     def remove_trusted_device(self):
         """Remove selected trusted device"""
         current_item = self.devices_list.currentItem()
-        if current_item:
-            # TODO: Remove from authentication module
+        if current_item and self.authenticator:
+            device_id = current_item.data(Qt.ItemDataRole.UserRole)
+            if device_id:
+                self.authenticator.remove_trusted_device(device_id)
             self.devices_list.takeItem(self.devices_list.row(current_item))
     
     def clear_trusted_devices(self):
@@ -271,7 +329,9 @@ class SettingsDialog(QDialog):
         
         if reply == QMessageBox.StandardButton.Yes:
             self.devices_list.clear()
-            # TODO: Clear from authentication module
+            if self.authenticator:
+                for did in list(self.authenticator.trusted_devices.keys()):
+                    self.authenticator.remove_trusted_device(did)
     
     def _configure_firewall(self):
         """Request firewall configuration via UAC."""
