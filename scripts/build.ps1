@@ -66,24 +66,73 @@ if (-not $SkipWindows) {
         & "$windowsApp\.venv\Scripts\python.exe" -m PyInstaller `
             --name "NexRemote" `
             --icon $icoPath `
-            --windowed `
+            --console `
             --onefile `
             --add-data "src\assets;assets" `
-            --add-data "src\data;data" `
             --add-data "src\utils\elevated_ops.py;utils" `
+            --hidden-import "core.server" `
+            --hidden-import "core.server_thread" `
+            --hidden-import "core.discovery" `
+            --hidden-import "core.connection_manager" `
+            --hidden-import "core.certificate_manager" `
+            --hidden-import "core.usb_detector" `
+            --hidden-import "core.nat_traversal" `
+            --hidden-import "ui.main_window" `
+            --hidden-import "ui.settings_dialog" `
+            --hidden-import "ui.connection_dialog" `
+            --hidden-import "ui.terms_dialog" `
+            --hidden-import "ui.tray_icon" `
+            --hidden-import "ui.file_explorer" `
+            --hidden-import "ui.task_manager" `
+            --hidden-import "security.encryption" `
+            --hidden-import "security.authentication" `
+            --hidden-import "security.audit_logger" `
+            --hidden-import "security.firewall_config" `
+            --hidden-import "input.virtual_keyboard" `
+            --hidden-import "input.virtual_mouse" `
+            --hidden-import "input.virtual_gamepad" `
+            --hidden-import "input.media_controller" `
+            --hidden-import "input.input_validator" `
+            --hidden-import "streaming.screen_capture" `
+            --hidden-import "streaming.camera_streamer" `
+            --hidden-import "streaming.audio_capture" `
+            --hidden-import "streaming.virtual_camera" `
+            --hidden-import "utils.paths" `
+            --hidden-import "utils.config" `
+            --hidden-import "utils.logger" `
+            --hidden-import "utils.elevate" `
+            --hidden-import "utils.elevated_ops" `
+            --hidden-import "utils.protocol" `
             --hidden-import "PyQt6.sip" `
             --hidden-import "PyQt6.QtCore" `
             --hidden-import "PyQt6.QtGui" `
             --hidden-import "PyQt6.QtWidgets" `
             --hidden-import "websockets" `
+            --hidden-import "websockets.legacy" `
+            --hidden-import "websockets.legacy.server" `
             --hidden-import "mss" `
+            --hidden-import "mss.windows" `
             --hidden-import "cv2" `
             --hidden-import "numpy" `
             --hidden-import "loguru" `
             --hidden-import "qrcode" `
             --hidden-import "PIL" `
+            --hidden-import "PIL.Image" `
             --hidden-import "cryptography" `
             --hidden-import "psutil" `
+            --hidden-import "pynput" `
+            --hidden-import "pynput.keyboard._win32" `
+            --hidden-import "pynput.mouse._win32" `
+            --hidden-import "vgamepad" `
+            --hidden-import "pycaw" `
+            --hidden-import "pycaw.pycaw" `
+            --hidden-import "comtypes" `
+            --hidden-import "comtypes.client" `
+            --hidden-import "pyperclip" `
+            --exclude-module "evdev" `
+            --exclude-module "Xlib" `
+            --exclude-module "AppKit" `
+            --exclude-module "Quartz" `
             --distpath (Join-Path $distDir "windows") `
             --workpath (Join-Path $root "build\pyinstaller") `
             --noconfirm `

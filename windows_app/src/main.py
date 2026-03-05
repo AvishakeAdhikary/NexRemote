@@ -11,7 +11,12 @@ import sys
 import os
 import ctypes
 import atexit
+import multiprocessing
 from datetime import datetime
+
+# ── CRITICAL: Required for PyInstaller frozen exes on Windows ──────────────
+# Must be called at the very start, before anything else.
+multiprocessing.freeze_support()
 
 # ── Elevated sub-process entrypoint (frozen exe only) ──────────────────────
 # When NexRemote.exe is launched with --run-elevated via UAC, skip the GUI

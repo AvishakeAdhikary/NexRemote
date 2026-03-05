@@ -68,10 +68,15 @@ class _WindowsXInputBackend(_GamepadBackend):
     _BUTTON_MAP: dict = {}
 
     def __init__(self):
-        import vgamepad as vg  # noqa: import inside init — Windows only
-        self._vg = vg
         self._active = False
         self._error: str | None = None
+        try:
+            import vgamepad as vg  # noqa: import inside init — Windows only
+        except (ImportError, OSError) as e:
+            self._error = f"vgamepad_dll_missing: {e}"
+            logger.warning(f"vgamepad import failed (DLL not found?): {e}")
+            return
+        self._vg = vg
         try:
             self._pad = vg.VX360Gamepad()
             self._active = True
@@ -160,10 +165,15 @@ class _WindowsDS4Backend(_GamepadBackend):
     """DualShock 4 (DInput) via vgamepad — only available on Windows with ViGEm."""
 
     def __init__(self):
-        import vgamepad as vg  # noqa
-        self._vg = vg
         self._active = False
         self._error: str | None = None
+        try:
+            import vgamepad as vg  # noqa
+        except (ImportError, OSError) as e:
+            self._error = f"vgamepad_dll_missing: {e}"
+            logger.warning(f"vgamepad import failed (DLL not found?): {e}")
+            return
+        self._vg = vg
         try:
             self._pad = vg.VDS4Gamepad()
             self._active = True

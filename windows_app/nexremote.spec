@@ -9,39 +9,163 @@ Or via the build script:
     .\scripts\build.ps1
 """
 import os
+import importlib.util
 
 block_cipher = None
+
+# ── Locate vgamepad native DLLs and data ──────────────────────────────────
+# vgamepad ships ViGEmClient.dll which must be bundled, or the app crashes.
+vgamepad_binaries = []
+vgamepad_datas = []
+_vg_spec = importlib.util.find_spec('vgamepad')
+if _vg_spec and _vg_spec.submodule_search_locations:
+    _vg_root = _vg_spec.submodule_search_locations[0]
+    # ViGEmClient.dll files (x64 + x86)
+    for arch in ('x64', 'x86'):
+        dll_path = os.path.join(_vg_root, 'win', 'vigem', 'client', arch, 'ViGEmClient.dll')
+        if os.path.isfile(dll_path):
+            vgamepad_binaries.append((dll_path, os.path.join('vgamepad', 'win', 'vigem', 'client', arch)))
+    # MSI installers (needed by vgamepad for auto-install prompt)
+    for arch in ('x64', 'x86'):
+        msi_path = os.path.join(_vg_root, 'win', 'vigem', 'install', arch)
+        if os.path.isdir(msi_path):
+            vgamepad_datas.append((msi_path, os.path.join('vgamepad', 'win', 'vigem', 'install', arch)))
 
 a = Analysis(
     ['src/main.py'],
     pathex=['src'],
-    binaries=[],
+    binaries=vgamepad_binaries,
     datas=[
+        # Bundle static assets (images, legal docs, etc.)
         ('src/assets', 'assets'),
-        ('src/data', 'data'),
+        # Bundle the elevated-operations helper module
         ('src/utils/elevated_ops.py', 'utils'),
-    ],
+    ] + vgamepad_datas,
     hiddenimports=[
+        # ── Application modules ─────────────────────────────────
+        # PyInstaller cannot auto-discover these because it only
+        # follows direct imports from main.py. Lazy / conditional
+        # imports and the implicit package structure cause misses.
+        
+        # core
+        'core.server',
+        'core.server_thread',
+        'core.discovery',
+        'core.connection_manager',
+        'core.certificate_manager',
+        'core.usb_detector',
+        'core.nat_traversal',
+        
+        # ui
+        'ui.main_window',
+        'ui.settings_dialog',
+        'ui.connection_dialog',
+        'ui.terms_dialog',
+        'ui.tray_icon',
+        'ui.file_explorer',
+        'ui.task_manager',
+        
+        # security
+        'security.encryption',
+        'security.authentication',
+        'security.audit_logger',
+        'security.firewall_config',
+        
+        # input
+        'input.virtual_keyboard',
+        'input.virtual_mouse',
+        'input.virtual_gamepad',
+        'input.media_controller',
+        'input.input_validator',
+        
+        # streaming
+        'streaming.screen_capture',
+        'streaming.camera_streamer',
+        'streaming.audio_capture',
+        'streaming.virtual_camera',
+        
+        # utils
+        'utils.paths',
+        'utils.config',
+        'utils.logger',
+        'utils.elevate',
+        'utils.elevated_ops',
+        'utils.protocol',
+        
+        # ── Third-party dependencies ────────────────────────────
+        # Qt
         'PyQt6.sip',
         'PyQt6.QtCore',
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
+        
+        # Networking
         'websockets',
         'websockets.legacy',
         'websockets.legacy.server',
+        'websockets.legacy.client',
+        'websockets.legacy.protocol',
+        'websockets.asyncio',
+        'websockets.asyncio.server',
+        'websockets.asyncio.client',
+        
+        # Media / vision
         'mss',
+        'mss.windows',
         'cv2',
         'numpy',
+        'PIL',
+        'PIL.Image',
+        
+        # Input simulation
+        'pynput',
+        'pynput.keyboard',
+        'pynput.keyboard._win32',
+        'pynput.mouse',
+        'pynput.mouse._win32',
+        'pynput._util',
+        'pynput._util.win32',
+        'vgamepad',
+        
+        # Audio (Windows)
+        'pycaw',
+        'pycaw.pycaw',
+        'comtypes',
+        'comtypes.client',
+        
+        # System info / clipboard
+        'psutil',
+        'pyperclip',
+        
+        # Logging / web
         'loguru',
         'qrcode',
-        'PIL',
+        
+        # Crypto
         'cryptography',
-        'psutil',
+        'cryptography.hazmat',
+        'cryptography.hazmat.primitives',
+        'cryptography.hazmat.primitives.asymmetric',
+        'cryptography.hazmat.primitives.asymmetric.rsa',
+        'cryptography.hazmat.primitives.serialization',
+        'cryptography.hazmat.primitives.hashes',
+        'cryptography.hazmat.backends',
+        'cryptography.x509',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # Linux/Mac-only modules that generate useless warnings
+        'evdev',
+        'libevdev',
+        'Xlib',
+        'AppKit',
+        'Quartz',
+        'CoreFoundation',
+        'HIServices',
+        'objc',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -64,7 +188,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,               # Windowed mode (no console)
+    console=False,               # GUI-only (no console window)
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
