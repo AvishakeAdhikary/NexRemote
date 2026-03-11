@@ -15,10 +15,12 @@ logger = get_logger(__name__)
 class SettingsDialog(QDialog):
     """Settings configuration dialog"""
     
-    def __init__(self, config, authenticator=None, parent=None):
+    def __init__(self, config, authenticator=None, gamepad_active=True, gamepad_error=None, parent=None):
         super().__init__(parent)
         self.config = config
         self.authenticator = authenticator
+        self._gamepad_active = gamepad_active
+        self._gamepad_error = gamepad_error
         self.setWindowTitle("Settings")
         self.setMinimumSize(600, 500)
         
@@ -190,21 +192,27 @@ class SettingsDialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Driver status
+        # Driver status — use real gamepad state passed from main window
         driver_group = QGroupBox("ViGEmBus Driver")
         driver_layout = QFormLayout()
 
-        installed = is_vigem_installed()
+        active = self._gamepad_active
         status_label = QLabel(
-            "✓ Installed" if installed else "✗ Not Installed"
+            "✓ Active" if active else "✗ Unavailable"
         )
         status_label.setStyleSheet(
-            "color: #27ae60; font-weight: bold;" if installed
+            "color: #27ae60; font-weight: bold;" if active
             else "color: #e74c3c; font-weight: bold;"
         )
-        driver_layout.addRow("Status:", status_label)
+        driver_layout.addRow("Gamepad Status:", status_label)
 
-        if not installed:
+        if not active:
+            error = self._gamepad_error or ""
+            if error:
+                err_label = QLabel(error)
+                err_label.setStyleSheet("color: #888; font-size: 11px;")
+                driver_layout.addRow("Reason:", err_label)
+
             guide_btn = QPushButton("Open Install Guide")
             guide_btn.setStyleSheet(
                 "QPushButton { background-color: #3498db; color: white; "

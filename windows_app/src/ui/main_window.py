@@ -237,28 +237,35 @@ class MainWindow(QMainWindow):
 
         self.tray.update_status("Server stopped")
 
-    # ─── ViGEmBus Driver ─────────────────────────────────────────────────
+    # ─── ViGEmBus Driver ─────────────────────────────────────────────────────────
 
     def _update_vigem_banner(self):
-        """Show/hide the ViGEmBus warning banner based on driver detection."""
-        installed = is_vigem_installed()
-        self.vigem_banner.setVisible(not installed)
-        if not installed:
-            logger.info("ViGEmBus driver not found — gamepad features unavailable")
+        """Show/hide the ViGEmBus warning banner based on actual gamepad state.
+
+        Uses server.gamepad.active (real runtime result) as the primary signal
+        rather than sc.exe query, which returns stale data after uninstall.
+        """
+        # error_reason is set when backend failed — most reliable indicator
+        gamepad_ok = self.server.gamepad.active
+        error = self.server.gamepad.error_reason or ""
+        vigem_error = "vigem" in error.lower() or "bus_not_found" in error.lower()
+
+        needs_driver = not gamepad_ok and (vigem_error or not gamepad_ok)
+        self.vigem_banner.setVisible(needs_driver)
+        if needs_driver:
+            logger.info(f"Gamepad unavailable ({error}) — showing ViGEmBus banner")
 
     def _retry_vigem(self):
         """Re-check ViGEmBus after user installs it externally."""
-        if is_vigem_installed():
-            self.vigem_banner.hide()
-            # Reinitialize the gamepad backend
-            active = self.server.gamepad.reinitialize()
-            if active:
-                self.statusBar().showMessage("✓ ViGEmBus detected — gamepad enabled!", 5000)
-                logger.info("ViGEmBus detected after retry — gamepad reinitialized")
-            else:
-                self.statusBar().showMessage("ViGEmBus found but gamepad init failed", 5000)
+        # Reinitialize first so we get a fresh result
+        active = self.server.gamepad.reinitialize()
+        self._update_vigem_banner()
+        if active:
+            self.statusBar().showMessage("✓ ViGEmBus detected — gamepad enabled!", 5000)
+            logger.info("ViGEmBus detected after retry — gamepad reinitialized")
         else:
-            self.statusBar().showMessage("ViGEmBus not detected — install it first", 5000)
+            error = self.server.gamepad.error_reason or "unknown error"
+            self.statusBar().showMessage(f"Gamepad still unavailable: {error}", 5000)
 
     # ─── Server Lifecycle ────────────────────────────────────────────────
 
@@ -467,7 +474,13 @@ class MainWindow(QMainWindow):
 
     def show_settings(self):
         """Show settings dialog"""
-        dialog = SettingsDialog(self.config, authenticator=self.server.authenticator, parent=self)
+        dialog = SettingsDialog(
+            self.config,
+            authenticator=self.server.authenticator,
+            gamepad_active=self.server.gamepad.active,
+            gamepad_error=self.server.gamepad.error_reason,
+            parent=self,
+        )
         if dialog.exec():
             logger.info("Settings updated")
             # Refresh port / IP labels
