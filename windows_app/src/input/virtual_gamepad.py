@@ -72,9 +72,9 @@ class _WindowsXInputBackend(_GamepadBackend):
         self._error: str | None = None
         try:
             import vgamepad as vg  # noqa: import inside init — Windows only
-        except (ImportError, OSError) as e:
-            self._error = f"vgamepad_dll_missing: {e}"
-            logger.warning(f"vgamepad import failed (DLL not found?): {e}")
+        except Exception as e:
+            self._error = f"vgamepad_unavailable: {e}"
+            logger.warning(f"vgamepad import/init failed: {e}")
             return
         self._vg = vg
         try:
@@ -169,9 +169,9 @@ class _WindowsDS4Backend(_GamepadBackend):
         self._error: str | None = None
         try:
             import vgamepad as vg  # noqa
-        except (ImportError, OSError) as e:
-            self._error = f"vgamepad_dll_missing: {e}"
-            logger.warning(f"vgamepad import failed (DLL not found?): {e}")
+        except Exception as e:
+            self._error = f"vgamepad_unavailable: {e}"
+            logger.warning(f"vgamepad import/init failed: {e}")
             return
         self._vg = vg
         try:
@@ -529,6 +529,18 @@ class VirtualGamepad:
         """Reset all axes/buttons to neutral."""
         if self._backend.active:
             self._backend.reset()
+
+    def reinitialize(self):
+        """
+        Re-select the gamepad backend.
+
+        Call this after installing the ViGEmBus driver so the app
+        picks up the change without a full restart.
+        """
+        logger.info("Reinitializing gamepad backend...")
+        self._backend.cleanup()
+        self._backend = _select_backend(self._mode)
+        return self._backend.active
 
     def __del__(self):
         self._backend.cleanup()

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                               QListWidget, QMessageBox)
 from PyQt6.QtCore import Qt
 from utils.logger import get_logger
+from utils.vigem_setup import is_vigem_installed, open_vigem_guide
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,10 @@ class SettingsDialog(QDialog):
         # Trusted Devices tab
         devices_tab = self.create_devices_tab()
         tabs.addTab(devices_tab, "Trusted Devices")
+        
+        # Gamepad tab
+        gamepad_tab = self.create_gamepad_tab()
+        tabs.addTab(gamepad_tab, "Gamepad")
         
         layout.addWidget(tabs)
         
@@ -178,6 +183,59 @@ class SettingsDialog(QDialog):
         cert_group.setLayout(cert_layout)
         layout.addRow(cert_group)
         
+        return widget
+    
+    def create_gamepad_tab(self) -> QWidget:
+        """Create gamepad settings tab with ViGEmBus driver status."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Driver status
+        driver_group = QGroupBox("ViGEmBus Driver")
+        driver_layout = QFormLayout()
+
+        installed = is_vigem_installed()
+        status_label = QLabel(
+            "✓ Installed" if installed else "✗ Not Installed"
+        )
+        status_label.setStyleSheet(
+            "color: #27ae60; font-weight: bold;" if installed
+            else "color: #e74c3c; font-weight: bold;"
+        )
+        driver_layout.addRow("Status:", status_label)
+
+        if not installed:
+            guide_btn = QPushButton("Open Install Guide")
+            guide_btn.setStyleSheet(
+                "QPushButton { background-color: #3498db; color: white; "
+                "padding: 6px 12px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: #2980b9; }"
+            )
+            guide_btn.clicked.connect(open_vigem_guide)
+            driver_layout.addRow("", guide_btn)
+
+        driver_group.setLayout(driver_layout)
+        layout.addWidget(driver_group)
+
+        # Info
+        info_group = QGroupBox("Information")
+        info_layout = QVBoxLayout()
+        info_label = QLabel(
+            "The <b>ViGEmBus</b> driver is required for virtual gamepad "
+            "emulation (Xbox 360 / DualShock 4 controllers).<br><br>"
+            "Without it, all other features work normally — only gamepad "
+            "input from the mobile app will be unavailable.<br><br>"
+            "Download it from the official "
+            "<a href='https://github.com/nefarius/ViGEmBus/releases/latest'>"
+            "ViGEmBus releases page</a>."
+        )
+        info_label.setWordWrap(True)
+        info_label.setOpenExternalLinks(True)
+        info_layout.addWidget(info_label)
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
+
+        layout.addStretch()
         return widget
     
     def create_devices_tab(self) -> QWidget:

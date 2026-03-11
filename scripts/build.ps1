@@ -103,6 +103,7 @@ if (-not $SkipWindows) {
             --hidden-import "utils.elevate" `
             --hidden-import "utils.elevated_ops" `
             --hidden-import "utils.protocol" `
+            --hidden-import "utils.vigem_setup" `
             --hidden-import "PyQt6.sip" `
             --hidden-import "PyQt6.QtCore" `
             --hidden-import "PyQt6.QtGui" `

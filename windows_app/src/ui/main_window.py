@@ -23,6 +23,7 @@ from ui.connection_dialog import ConnectionApprovalDialog
 from ui.tray_icon import TrayIcon
 from utils.logger import get_logger
 from utils.paths import get_assets_dir
+from utils.vigem_setup import is_vigem_installed, open_vigem_guide
 
 logger = get_logger(__name__)
 
@@ -159,6 +160,46 @@ class MainWindow(QMainWindow):
         clients_group.setLayout(clients_layout)
         layout.addWidget(clients_group)
 
+        # ── ViGEmBus driver warning (non-blocking) ──
+        self.vigem_banner = QWidget()
+        vigem_layout = QHBoxLayout(self.vigem_banner)
+        vigem_layout.setContentsMargins(8, 4, 8, 4)
+
+        vigem_icon = QLabel("⚠")
+        vigem_icon.setStyleSheet("font-size: 16px;")
+        vigem_layout.addWidget(vigem_icon)
+
+        vigem_text = QLabel(
+            "Gamepad features require the <b>ViGEmBus</b> driver. "
+            "Everything else works without it."
+        )
+        vigem_text.setWordWrap(True)
+        vigem_layout.addWidget(vigem_text, stretch=1)
+
+        vigem_guide_btn = QPushButton("Install Guide")
+        vigem_guide_btn.setFixedWidth(100)
+        vigem_guide_btn.setStyleSheet(
+            "QPushButton { background-color: #3498db; color: white; "
+            "border-radius: 4px; padding: 4px 8px; font-size: 12px; }"
+            "QPushButton:hover { background-color: #2980b9; }"
+        )
+        vigem_guide_btn.clicked.connect(open_vigem_guide)
+        vigem_layout.addWidget(vigem_guide_btn)
+
+        vigem_retry_btn = QPushButton("Retry")
+        vigem_retry_btn.setFixedWidth(60)
+        vigem_retry_btn.setToolTip("Re-check after installing ViGEmBus")
+        vigem_retry_btn.clicked.connect(self._retry_vigem)
+        vigem_layout.addWidget(vigem_retry_btn)
+
+        self.vigem_banner.setStyleSheet(
+            "background-color: #fff3cd; border: 1px solid #ffc107; "
+            "border-radius: 6px;"
+        )
+
+        layout.addWidget(self.vigem_banner)
+        self._update_vigem_banner()
+
         # ── Bottom buttons ──
         button_layout = QHBoxLayout()
 
@@ -195,6 +236,29 @@ class MainWindow(QMainWindow):
         self.tray.show()
 
         self.tray.update_status("Server stopped")
+
+    # ─── ViGEmBus Driver ─────────────────────────────────────────────────
+
+    def _update_vigem_banner(self):
+        """Show/hide the ViGEmBus warning banner based on driver detection."""
+        installed = is_vigem_installed()
+        self.vigem_banner.setVisible(not installed)
+        if not installed:
+            logger.info("ViGEmBus driver not found — gamepad features unavailable")
+
+    def _retry_vigem(self):
+        """Re-check ViGEmBus after user installs it externally."""
+        if is_vigem_installed():
+            self.vigem_banner.hide()
+            # Reinitialize the gamepad backend
+            active = self.server.gamepad.reinitialize()
+            if active:
+                self.statusBar().showMessage("✓ ViGEmBus detected — gamepad enabled!", 5000)
+                logger.info("ViGEmBus detected after retry — gamepad reinitialized")
+            else:
+                self.statusBar().showMessage("ViGEmBus found but gamepad init failed", 5000)
+        else:
+            self.statusBar().showMessage("ViGEmBus not detected — install it first", 5000)
 
     # ─── Server Lifecycle ────────────────────────────────────────────────
 

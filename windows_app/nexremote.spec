@@ -14,9 +14,8 @@ import importlib.util
 block_cipher = None
 
 # ── Locate vgamepad native DLLs and data ──────────────────────────────────
-# vgamepad ships ViGEmClient.dll which must be bundled, or the app crashes.
+# vgamepad ships ViGEmClient.dll which must be bundled, or the import crashes.
 vgamepad_binaries = []
-vgamepad_datas = []
 _vg_spec = importlib.util.find_spec('vgamepad')
 if _vg_spec and _vg_spec.submodule_search_locations:
     _vg_root = _vg_spec.submodule_search_locations[0]
@@ -25,11 +24,6 @@ if _vg_spec and _vg_spec.submodule_search_locations:
         dll_path = os.path.join(_vg_root, 'win', 'vigem', 'client', arch, 'ViGEmClient.dll')
         if os.path.isfile(dll_path):
             vgamepad_binaries.append((dll_path, os.path.join('vgamepad', 'win', 'vigem', 'client', arch)))
-    # MSI installers (needed by vgamepad for auto-install prompt)
-    for arch in ('x64', 'x86'):
-        msi_path = os.path.join(_vg_root, 'win', 'vigem', 'install', arch)
-        if os.path.isdir(msi_path):
-            vgamepad_datas.append((msi_path, os.path.join('vgamepad', 'win', 'vigem', 'install', arch)))
 
 a = Analysis(
     ['src/main.py'],
@@ -40,7 +34,7 @@ a = Analysis(
         ('src/assets', 'assets'),
         # Bundle the elevated-operations helper module
         ('src/utils/elevated_ops.py', 'utils'),
-    ] + vgamepad_datas,
+    ],
     hiddenimports=[
         # ── Application modules ─────────────────────────────────
         # PyInstaller cannot auto-discover these because it only
@@ -91,6 +85,7 @@ a = Analysis(
         'utils.elevate',
         'utils.elevated_ops',
         'utils.protocol',
+        'utils.vigem_setup',
         
         # ── Third-party dependencies ────────────────────────────
         # Qt
