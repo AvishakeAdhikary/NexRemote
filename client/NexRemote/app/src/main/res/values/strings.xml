@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">NexRemote</string>
+    <string name="app_tagline">Remote desktop controls for your PC</string>
+    <string name="developer_name">Neural Nexus Studios</string>
+</resources>

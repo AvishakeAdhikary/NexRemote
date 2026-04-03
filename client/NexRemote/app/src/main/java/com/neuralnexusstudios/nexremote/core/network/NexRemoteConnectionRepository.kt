@@ -1,0 +1,337 @@
+package com.neuralnexusstudios.nexremote.core.network
+
+import android.content.Context
+import com.neuralnexusstudios.nexremote.core.model.ConnectionStatus
+import com.neuralnexusstudios.nexremote.core.model.ServerInfo
+import com.neuralnexusstudios.nexremote.core.storage.AppPreferences
+import com.neuralnexusstudios.nexremote.core.storage.CertificateStore
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import java.util.concurrent.TimeUnit
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+
+class NexRemoteConnectionRepository(
+    context: Context,
+    private val preferences: AppPreferences,
+    private val certificateStore: CertificateStore,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mutex = Mutex()
+
+    private val baseClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+
+    private val permissiveTrustManager = object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+        override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+    }
+
+    private val secureClient: OkHttpClient by lazy {
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf<TrustManager>(permissiveTrustManager), SecureRandom())
+        baseClient.newBuilder()
+            .sslSocketFactory(sslContext.socketFactory, permissiveTrustManager)
+            .hostnameVerifier(HostnameVerifier { _, _ -> true })
+            .build()
+    }
+
+    private var webSocket: WebSocket? = null
+    private var pingJob: Job? = null
+    private var reconnectJob: Job? = null
+
+    private var intentionalDisconnect = false
+    private var reconnectAttempt = 0
+    private var missedPongs = 0
+
+    private var lastHost: String? = null
+    private var lastSecurePort: Int? = null
+    private var lastInsecurePort: Int? = null
+    private var lastTrySecureFirst: Boolean = true
+    private var deviceId: String = ""
+    private var deviceName: String = ""
+
+    private val _connectionState = MutableStateFlow(ConnectionStatus.DISCONNECTED)
+    private val _connectedDeviceName = MutableStateFlow("")
+    private val _messages = MutableSharedFlow<JsonObject>(extraBufferCapacity = 64)
+    private val _binaryFrames = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+    private val _events = MutableSharedFlow<String>(extraBufferCapacity = 16)
+
+    val connectionState: StateFlow<ConnectionStatus> = _connectionState
+    val connectedDeviceName: StateFlow<String> = _connectedDeviceName
+    val messages: SharedFlow<JsonObject> = _messages
+    val binaryFrames: SharedFlow<ByteArray> = _binaryFrames
+    val events: SharedFlow<String> = _events
+
+    suspend fun connect(server: ServerInfo, trySecureFirst: Boolean = true): Boolean {
+        val settings = preferences.settings.value
+        return connect(
+            host = server.address,
+            securePort = server.port,
+            insecurePort = server.portInsecure,
+            deviceId = settings.deviceId,
+            deviceName = settings.deviceName,
+            trySecureFirst = trySecureFirst,
+        )
+    }
+
+    suspend fun connect(
+        host: String,
+        securePort: Int,
+        insecurePort: Int,
+        deviceId: String,
+        deviceName: String,
+        trySecureFirst: Boolean = true,
+    ): Boolean = mutex.withLock {
+        intentionalDisconnect = false
+        reconnectAttempt = 0
+        lastHost = host
+        lastSecurePort = securePort
+        lastInsecurePort = insecurePort
+        lastTrySecureFirst = trySecureFirst && preferences.settings.value.useSecureConnection
+        this.deviceId = deviceId
+        this.deviceName = deviceName
+        preferences.updateLastServer("$host:$securePort")
+
+        if (lastTrySecureFirst) {
+            when (attemptConnection(host, securePort, secure = true)) {
+                AttemptResult.Success -> return true
+                AttemptResult.CertificateRejected -> return false
+                AttemptResult.Failure -> Unit
+            }
+        }
+        return attemptConnection(host, insecurePort, secure = false) == AttemptResult.Success
+    }
+
+    suspend fun connectUsb(port: Int = 8766): Boolean {
+        val settings = preferences.settings.value
+        val success = connect(
+            host = "127.0.0.1",
+            securePort = port,
+            insecurePort = port,
+            deviceId = settings.deviceId,
+            deviceName = settings.deviceName,
+            trySecureFirst = false,
+        )
+        if (success) {
+            lastSecurePort = null
+            lastInsecurePort = port
+            lastTrySecureFirst = false
+        }
+        return success
+    }
+
+    fun disconnect() {
+        intentionalDisconnect = true
+        reconnectJob?.cancel()
+        pingJob?.cancel()
+        webSocket?.close(1000, "User disconnected")
+        webSocket = null
+        _connectionState.value = ConnectionStatus.DISCONNECTED
+        _connectedDeviceName.value = ""
+    }
+
+    fun sendMessage(payload: Map<String, Any?>) {
+        if (_connectionState.value != ConnectionStatus.CONNECTED) return
+        val json = JsonCodec.encodeToString(JsonObject.serializer(), mapToJsonObject(payload))
+        webSocket?.send(CryptoUtils.encryptToBase64(json))
+    }
+
+    fun sendRawJson(payload: Map<String, Any?>) {
+        val json = JsonCodec.encodeToString(JsonObject.serializer(), mapToJsonObject(payload))
+        webSocket?.send(json)
+    }
+
+    private suspend fun attemptConnection(host: String, port: Int, secure: Boolean): AttemptResult {
+        val authResult = CompletableDeferred<AttemptResult>()
+        val wsUrl = "${if (secure) "wss" else "ws"}://$host:$port"
+        _connectionState.value = ConnectionStatus.CONNECTING
+
+        val listener = object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (secure) {
+                    val certificate = response.handshake?.peerCertificates?.firstOrNull()
+                    if (certificate != null && !certificateStore.trustOrVerify(host, certificate)) {
+                        authResult.complete(AttemptResult.CertificateRejected)
+                        webSocket.close(1008, "Certificate mismatch")
+                        return
+                    }
+                }
+
+                this@NexRemoteConnectionRepository.webSocket = webSocket
+                sendRawJson(
+                    mapOf(
+                        "type" to "auth",
+                        "device_id" to deviceId,
+                        "device_name" to deviceName,
+                        "version" to "1.0.0",
+                    ),
+                )
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                handleIncomingText(text, authResult)
+            }
+
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                _binaryFrames.tryEmit(bytes.toByteArray())
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (!authResult.isCompleted) {
+                    authResult.complete(AttemptResult.Failure)
+                } else {
+                    handleSocketFailure()
+                }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!authResult.isCompleted) {
+                    authResult.complete(AttemptResult.Failure)
+                } else {
+                    handleSocketFailure()
+                }
+            }
+        }
+
+        val request = Request.Builder().url(wsUrl).build()
+        val client = if (secure) secureClient else baseClient
+        client.newWebSocket(request, listener)
+
+        return try {
+            when (withTimeout(15_000) { authResult.await() }) {
+                AttemptResult.Success -> {
+                    reconnectAttempt = 0
+                    startPingLoop()
+                    AttemptResult.Success
+                }
+                AttemptResult.CertificateRejected -> {
+                    _events.tryEmit("The trusted certificate for $host changed. Secure connection was rejected.")
+                    webSocket?.close(1000, "Certificate rejected")
+                    webSocket = null
+                    _connectionState.value = ConnectionStatus.DISCONNECTED
+                    AttemptResult.CertificateRejected
+                }
+                AttemptResult.Failure -> {
+                    webSocket?.close(1000, "Connect failed")
+                    webSocket = null
+                    _connectionState.value = ConnectionStatus.DISCONNECTED
+                    AttemptResult.Failure
+                }
+            }
+        } catch (_: Throwable) {
+            webSocket?.close(1000, "Connect timeout")
+            webSocket = null
+            _connectionState.value = ConnectionStatus.DISCONNECTED
+            AttemptResult.Failure
+        }
+    }
+
+    private fun handleIncomingText(text: String, authResult: CompletableDeferred<AttemptResult>) {
+        val plainJson = runCatching { JsonCodec.parseToJsonElement(text).jsonObject }.getOrNull()
+        val decoded = plainJson ?: runCatching {
+            JsonCodec.parseToJsonElement(CryptoUtils.decryptBase64(text)).jsonObject
+        }.getOrNull()
+        val payload = decoded ?: return
+        when (payload.string("type")) {
+            "auth_success" -> {
+                _connectionState.value = ConnectionStatus.CONNECTED
+                _connectedDeviceName.value = payload.string("server_name") ?: payload.string("name").orEmpty()
+                _messages.tryEmit(payload)
+                authResult.complete(AttemptResult.Success)
+            }
+            "auth_failed", "connection_rejected" -> {
+                _messages.tryEmit(payload)
+                authResult.complete(AttemptResult.Failure)
+            }
+            "pong" -> missedPongs = 0
+            else -> _messages.tryEmit(payload)
+        }
+    }
+
+    private fun handleSocketFailure() {
+        pingJob?.cancel()
+        webSocket = null
+        if (!intentionalDisconnect) {
+            _connectionState.value = ConnectionStatus.CONNECTING
+            scheduleReconnect()
+        } else {
+            _connectionState.value = ConnectionStatus.DISCONNECTED
+        }
+    }
+
+    private fun startPingLoop() {
+        pingJob?.cancel()
+        missedPongs = 0
+        pingJob = scope.launch {
+            while (true) {
+                delay(15_000)
+                if (_connectionState.value != ConnectionStatus.CONNECTED) continue
+                missedPongs += 1
+                if (missedPongs > 3) {
+                    handleSocketFailure()
+                    break
+                }
+                sendRawJson(mapOf("type" to "ping"))
+            }
+        }
+    }
+
+    private fun scheduleReconnect() {
+        if (reconnectJob?.isActive == true || intentionalDisconnect) return
+        val host = lastHost ?: return
+        reconnectJob = scope.launch {
+            while (!intentionalDisconnect && reconnectAttempt < 15) {
+                val delaySeconds = (1 shl reconnectAttempt).coerceAtMost(30)
+                reconnectAttempt += 1
+                delay(delaySeconds * 1_000L)
+                val success = connect(
+                    host = host,
+                    securePort = lastSecurePort ?: 8765,
+                    insecurePort = lastInsecurePort ?: 8766,
+                    deviceId = deviceId,
+                    deviceName = deviceName,
+                    trySecureFirst = lastTrySecureFirst,
+                )
+                if (success) break
+            }
+            if (!intentionalDisconnect && _connectionState.value != ConnectionStatus.CONNECTED) {
+                _connectionState.value = ConnectionStatus.DISCONNECTED
+                _events.tryEmit("Unable to reconnect to the PC server.")
+            }
+        }
+    }
+
+    private enum class AttemptResult {
+        Success,
+        Failure,
+        CertificateRejected,
+    }
+}

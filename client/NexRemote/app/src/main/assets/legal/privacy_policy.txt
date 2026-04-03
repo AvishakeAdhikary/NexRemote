@@ -1,0 +1,70 @@
+NexRemote Privacy Policy
+
+Effective date: April 4, 2026
+Developer: Neural Nexus Studios
+Application: NexRemote
+
+1. Overview
+NexRemote is an Android application from Neural Nexus Studios that lets you connect your Android device to a compatible NexRemote PC server that you control. This Privacy Policy explains what data the app accesses, how the app uses that data, when data may be shared, and what choices you have.
+
+2. Data the app accesses or processes
+NexRemote may access or process the following categories of data:
+
+- Camera data, only when you choose QR pairing, so the app can read a connection code displayed by your PC server.
+- Local device and app settings, including a generated device identifier, device name, last connected server, security preferences, gyroscope settings, legal acceptance records, custom gamepad layouts, macros, and trusted server certificate information.
+- Local network, internet, and connection data needed to discover, pair with, and communicate with the PC server you choose to connect to.
+- Remote content transmitted from your PC server to your phone when you actively use app features, including screen-share frames, camera frames, file listings, file contents, media information, and task-manager information.
+- Sensor data, such as gyroscope or related motion data, only when you enable motion-based control features.
+- Limited diagnostic or error information stored locally on your device as needed for app stability and troubleshooting.
+
+3. How NexRemote uses data
+NexRemote uses data only for the app’s user-initiated features and related security or reliability functions, including:
+
+- discovering and connecting to your selected PC server
+- authenticating and maintaining the connection
+- transmitting your chosen control inputs to your PC server
+- receiving and displaying remote content that your PC server sends back to your phone
+- saving your preferences, layouts, and other local app settings
+- improving app reliability, connection safety, and troubleshooting
+
+4. Sharing and disclosures
+Neural Nexus Studios does not sell personal or sensitive user data.
+
+Data handled by NexRemote is shared primarily with the PC server that you choose to connect to, because that transfer is necessary for the app’s core remote-control features.
+
+NexRemote may also rely on third-party libraries or platform services for app functionality, such as Android platform components, security features, QR scanning, networking, and user-interface frameworks. Neural Nexus Studios requires those components to be used in a manner consistent with applicable Google Play policies and applicable law.
+
+NexRemote does not use camera data, motion data, remote content, or connection data for advertising.
+NexRemote does not show third-party ads in the current app version.
+
+5. Storage, retention, and deletion
+Most persistent NexRemote data is stored locally on your device.
+
+The app is designed to display remote content from your PC server as part of live features you choose to use. That remote content is not intended to be retained by the app except for temporary device or platform caching that may occur during normal operation.
+
+Locally stored app data may remain on your device until you remove it. You can delete local NexRemote data by:
+
+- clearing the app’s storage from Android settings
+- removing saved data within future in-app controls if provided
+- uninstalling the app
+
+6. Security
+NexRemote uses Android and network security features where available, including secure transport behavior for compatible server connections and local trust records for supported server certificates. However, no app, network, or storage method can guarantee absolute security.
+
+7. Your choices
+You may:
+
+- decline the Terms and stop using the app
+- deny camera permission and skip QR pairing
+- choose not to connect to any PC server
+- disable optional features such as auto-connect, motion-based control, or app haptics
+- clear app data or uninstall the app at any time
+
+8. Children
+NexRemote is not directed to children and is not designed specifically for children.
+
+9. Changes to this Privacy Policy
+Neural Nexus Studios may update this Privacy Policy when the app, legal requirements, security practices, or platform requirements change. The latest version will be made available within the app and through the app’s official distribution materials.
+
+10. Contact
+For privacy questions, requests, or concerns about NexRemote, use the support contact, support email, or support form published by Neural Nexus Studios on the official NexRemote Google Play listing or other official support channels for the app.
