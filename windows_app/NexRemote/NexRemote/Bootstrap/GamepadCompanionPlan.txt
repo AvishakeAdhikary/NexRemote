@@ -1,0 +1,11 @@
+NexRemote gamepad companion placeholder
+
+This packaged WinUI app remains the primary desktop experience.
+Driver-backed gamepad parity requires a companion bootstrapper outside the MSIX package
+because MSIX packages do not install drivers.
+
+Planned companion responsibilities:
+- detect ViGEmBus availability
+- guide or launch the external driver install path
+- expose a health or readiness signal back to the main app
+- keep the main app package unchanged for normal sideload distribution

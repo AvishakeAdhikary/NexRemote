@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "NexRemote (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "NexRemote (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

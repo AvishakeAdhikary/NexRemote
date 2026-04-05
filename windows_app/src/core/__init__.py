@@ -1,1 +1,0 @@
-# NexRemote core package
