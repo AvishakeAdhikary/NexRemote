@@ -18,7 +18,8 @@ public sealed class DiscoveryModelFactory : IDiscoveryModelFactory
             Port = settings.ServerPort,
             PortInsecure = settings.ServerPortInsecure,
             Id = settings.DeviceId,
-            Version = ProtocolConstants.Version
+            Version = ProtocolConstants.Version,
+            CertFingerprint = settings.CertificateFingerprint ?? settings.CertificateThumbprint ?? string.Empty
         };
     }
 
@@ -30,7 +31,8 @@ public sealed class DiscoveryModelFactory : IDiscoveryModelFactory
             Port = settings.ServerPort,
             PortInsecure = settings.ServerPortInsecure,
             Name = settings.PcName,
-            Id = settings.DeviceId
+            Id = settings.DeviceId,
+            CertFingerprint = settings.CertificateFingerprint ?? settings.CertificateThumbprint ?? string.Empty
         };
     }
 }

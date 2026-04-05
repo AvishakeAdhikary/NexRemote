@@ -50,6 +50,9 @@ class DiscoveryRepository(context: Context) {
                                 portInsecure = json.int("port_insecure") ?: 8766,
                                 id = json.string("id").orEmpty(),
                                 version = json.string("version") ?: "1.0.0",
+                                certificateFingerprint = json.string("cert_fingerprint")
+                                    ?: json.string("certificate_fingerprint")
+                                    ?: json.string("certificate_thumbprint"),
                             )
                             servers[server.id.ifBlank { server.address }] = server
                         }

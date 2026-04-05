@@ -158,6 +158,7 @@ internal sealed class FileExplorerService
                 action = "properties",
                 path,
                 name = Path.GetFileName(path),
+                item_type = isDirectory ? "directory" : "file",
                 is_directory = isDirectory,
                 size = isDirectory ? 0L : fileInfo.Length,
                 created = stat.CreationTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),

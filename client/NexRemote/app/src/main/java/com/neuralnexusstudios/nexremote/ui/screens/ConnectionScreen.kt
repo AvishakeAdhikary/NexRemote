@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -61,6 +62,7 @@ import com.neuralnexusstudios.nexremote.core.model.ServerInfo
 import com.neuralnexusstudios.nexremote.core.network.JsonCodec
 import com.neuralnexusstudios.nexremote.ui.components.AppTopBar
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -122,6 +124,14 @@ fun ConnectionScreen(
 
     LaunchedEffect(Unit) {
         refreshDiscovery()
+    }
+
+    LaunchedEffect(appContainer.connectionRepository) {
+        appContainer.connectionRepository.events.collectLatest { message ->
+            if (message.isNotBlank()) {
+                snackbars.showSnackbar(message)
+            }
+        }
     }
 
     Scaffold(
@@ -510,6 +520,8 @@ private fun launchQrScanner(
                         port = payload["port"]?.jsonPrimitive?.intOrNull ?: 8765,
                         portInsecure = payload["port_insecure"]?.jsonPrimitive?.intOrNull ?: 8766,
                         id = payload["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        certificateFingerprint = payload["cert_fingerprint"]?.jsonPrimitive?.contentOrNull
+                            ?: payload["certificate_fingerprint"]?.jsonPrimitive?.contentOrNull,
                     ),
                 )
             }.onFailure {

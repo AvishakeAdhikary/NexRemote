@@ -13,6 +13,7 @@ using NexRemote.Helpers;
 using NexRemote.Models;
 using NexRemote.Services;
 using NexRemote.ViewModels;
+using Serilog;
 using WinRT.Interop;
 
 namespace NexRemote;
@@ -22,7 +23,7 @@ public sealed class MainWindow : Window
     private readonly IAppSettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly ITrayIconService _trayIconService;
-    private readonly IRemoteServer _remoteServer;
+    private readonly IServerCoordinator _serverCoordinator;
     private readonly IConnectionApprovalService _approvalService;
     private readonly ICameraPermissionService _cameraPermissionService;
     private readonly AppWindow _appWindow;
@@ -73,6 +74,7 @@ public sealed class MainWindow : Window
     private bool _allowClose;
     private bool _initialized;
     private bool _cleanupComplete;
+    private int _exitRequested;
 
     public MainWindow()
         : this(App.Host.Services)
@@ -84,7 +86,7 @@ public sealed class MainWindow : Window
         _settingsService = services.GetRequiredService<IAppSettingsService>();
         _themeService = services.GetRequiredService<IThemeService>();
         _trayIconService = services.GetRequiredService<ITrayIconService>();
-        _remoteServer = services.GetRequiredService<IRemoteServer>();
+        _serverCoordinator = services.GetRequiredService<IServerCoordinator>();
         _approvalService = services.GetRequiredService<IConnectionApprovalService>();
         _cameraPermissionService = services.GetRequiredService<ICameraPermissionService>();
         ViewModel = services.GetRequiredService<MainWindowViewModel>();
@@ -321,8 +323,8 @@ public sealed class MainWindow : Window
         _trayIconService.ShowRequested += OnTrayShowRequested;
         _trayIconService.ToggleServerRequested += OnTrayToggleServerRequested;
         _trayIconService.ExitRequested += OnTrayExitRequested;
-        _remoteServer.ClientConnected += OnRemoteServerClientConnected;
-        _remoteServer.ClientDisconnected += OnRemoteServerClientDisconnected;
+        _serverCoordinator.ClientConnected += OnRemoteServerClientConnected;
+        _serverCoordinator.ClientDisconnected += OnRemoteServerClientDisconnected;
         _approvalService.ApprovalRequested += OnApprovalRequested;
         _trayIconService.Initialize();
         _trayIconService.UpdateServerState(ViewModel.IsServerRunning, ViewModel.ServerStatusText);
@@ -470,28 +472,25 @@ public sealed class MainWindow : Window
 
     private void OnTrayShowRequested(object? sender, EventArgs e) => RestoreFromActivation();
     private async void OnTrayToggleServerRequested(object? sender, EventArgs e) { await ViewModel.ToggleServerAsync(); RefreshControlsFromViewModel(); _trayIconService.UpdateServerState(ViewModel.IsServerRunning, ViewModel.ServerStatusText); }
-    private async void OnTrayExitRequested(object? sender, EventArgs e)
-    {
-        _allowClose = true;
-        try
-        {
-            await _remoteServer.StopAsync();
-        }
-        catch
-        {
-            // ignored during shutdown
-        }
-
-        Close();
-    }
+    private async void OnTrayExitRequested(object? sender, EventArgs e) => await RequestExitAsync();
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        if (_allowClose || !_settingsService.Current.MinimizeToTray) return;
+        if (_allowClose)
+        {
+            return;
+        }
+
         args.Cancel = true;
-        if (!_settingsService.Current.BackgroundConsentGranted) { _ = AskForBackgroundConsentAndHideAsync(); return; }
-        sender.Hide();
-        _trayIconService.ShowMessage("NexRemote", "NexRemote is still available in the system tray.");
+        if (_settingsService.Current.MinimizeToTray)
+        {
+            if (!_settingsService.Current.BackgroundConsentGranted) { _ = AskForBackgroundConsentAndHideAsync(); return; }
+            sender.Hide();
+            _trayIconService.ShowMessage("NexRemote", "NexRemote is still available in the system tray.");
+            return;
+        }
+
+        _ = RequestExitAsync();
     }
 
     private async Task AskForBackgroundConsentAndHideAsync()
@@ -520,8 +519,8 @@ public sealed class MainWindow : Window
         _trayIconService.ShowRequested -= OnTrayShowRequested;
         _trayIconService.ToggleServerRequested -= OnTrayToggleServerRequested;
         _trayIconService.ExitRequested -= OnTrayExitRequested;
-        _remoteServer.ClientConnected -= OnRemoteServerClientConnected;
-        _remoteServer.ClientDisconnected -= OnRemoteServerClientDisconnected;
+        _serverCoordinator.ClientConnected -= OnRemoteServerClientConnected;
+        _serverCoordinator.ClientDisconnected -= OnRemoteServerClientDisconnected;
         _approvalService.ApprovalRequested -= OnApprovalRequested;
         _trayIconService.Dispose();
         foreach (var window in _secondaryWindows.ToArray()) { try { window.Close(); } catch { } }
@@ -587,21 +586,31 @@ public sealed class MainWindow : Window
 
     private static void LogStartup(string message, Exception? exception = null)
     {
+        if (exception is null)
+        {
+            Log.Information("{Message}", message);
+        }
+        else
+        {
+            Log.Error(exception, "{Message}", message);
+        }
+    }
+
+    private async Task RequestExitAsync()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _exitRequested, 1) == 1)
+        {
+            return;
+        }
+
         try
         {
-            Directory.CreateDirectory(PathHelper.GetLogsDirectory());
-            var path = Path.Combine(PathHelper.GetLogsDirectory(), "startup.log");
-            var text = $"[{DateTimeOffset.Now:O}] {message}";
-            if (exception is not null)
-            {
-                text += Environment.NewLine + exception + Environment.NewLine;
-            }
-
-            File.AppendAllText(path, text + Environment.NewLine);
+            await App.ShutdownAsync();
         }
-        catch
+        finally
         {
-            // ignored
+            _allowClose = true;
+            Close();
         }
     }
 

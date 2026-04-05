@@ -46,6 +46,7 @@ public sealed class AppSettings
     public bool CameraAccessConsentGranted { get; set; } = false;
     public DateTimeOffset? PrivacyPolicyReviewedAt { get; set; }
     public string? CertificateThumbprint { get; set; }
+    public string? CertificateFingerprint { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }

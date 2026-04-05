@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -42,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ fun ScreenShareScreen(
     val displays by appContainer.screenShareRepository.displays.collectAsState()
     val frames by appContainer.screenShareRepository.frames.collectAsState()
     val active by appContainer.screenShareRepository.activeDisplays.collectAsState()
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     var fps by remember { mutableIntStateOf(30) }
     var quality by remember { mutableStateOf("medium") }
     var resolution by remember { mutableStateOf("native") }
@@ -65,8 +68,16 @@ fun ScreenShareScreen(
     var fullScreenDisplay by remember { mutableStateOf<Int?>(null) }
     val selected = remember { mutableStateListOf<Int>() }
 
-    LaunchedEffect(Unit) {
-        appContainer.screenShareRepository.requestDisplays()
+    val screenShareAvailable = sessionState.connected &&
+        sessionState.capabilities?.screenStreaming != false &&
+        sessionState.featureStatus["screen_share"]?.available != false
+    val screenShareReason = sessionState.featureStatus["screen_share"]?.reason
+        ?: if (sessionState.capabilities?.screenStreaming == false) "Screen share is not supported by the PC server." else null
+
+    LaunchedEffect(screenShareAvailable) {
+        if (screenShareAvailable) {
+            appContainer.screenShareRepository.requestDisplays()
+        }
     }
 
     LaunchedEffect(displays) {
@@ -74,6 +85,8 @@ fun ScreenShareScreen(
             selected += displays.first().index
         }
     }
+
+
 
     if (fullScreenDisplay != null) {
         FullScreenSharePage(
@@ -170,13 +183,20 @@ fun ScreenShareScreen(
                 valueRange = 5f..60f,
             )
 
+            if (!screenShareAvailable) {
+                Text(
+                    screenShareReason ?: "Screen share is not ready yet.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
                         if (active.isEmpty()) appContainer.screenShareRepository.start(selected.toList(), fps, quality, resolution)
                         else appContainer.screenShareRepository.stop()
                     },
-                    enabled = selected.isNotEmpty(),
+                    enabled = if (active.isEmpty()) selected.isNotEmpty() && screenShareAvailable else true,
                 ) {
                     Text(if (active.isEmpty()) "Start Streaming" else "Stop Streaming")
                 }
@@ -261,6 +281,7 @@ private fun FullScreenSharePage(
                     onOpenFullScreen = {},
                     onSendInput = onSendInput,
                     modifier = Modifier.fillMaxSize(),
+                    fullScreen = true,
                 )
             }
         }
@@ -274,36 +295,46 @@ private fun ScreenFrame(
     onOpenFullScreen: () -> Unit,
     onSendInput: (String, Float, Float, Map<String, Any?>) -> Unit,
     modifier: Modifier = Modifier.fillMaxWidth(),
+    fullScreen: Boolean = false,
 ) {
     var lastX by remember { mutableStateOf(0.5f) }
     var lastY by remember { mutableStateOf(0.5f) }
 
-    rememberJpegImage(frame)?.let { image ->
+    val image by rememberJpegImage(frame)
+    image?.let { image ->
+        val aspectRatio = image.width.toFloat() / image.height.toFloat().coerceAtLeast(1f)
+        val contentModifier = if (fullScreen) {
+            modifier
+        } else {
+            modifier
+                .fillMaxWidth()
+                .aspectRatio(aspectRatio)
+        }
         Box(
-            modifier = modifier
+            modifier = contentModifier
                 .pointerInput(interactive) {
                     if (interactive) {
                         detectTapGestures(
                             onTap = { offset ->
-                                val x = (offset.x / size.width).coerceIn(0f, 1f)
-                                val y = (offset.y / size.height).coerceIn(0f, 1f)
-                                lastX = x
-                                lastY = y
-                                onSendInput("click", x, y, mapOf("button" to "left", "count" to 1))
+                                mapPointerToNormalized(offset, size.width.toFloat(), size.height.toFloat(), image.width, image.height)?.let { (x, y) ->
+                                    lastX = x
+                                    lastY = y
+                                    onSendInput("click", x, y, mapOf("button" to "left", "count" to 1))
+                                }
                             },
                             onDoubleTap = { offset ->
-                                val x = (offset.x / size.width).coerceIn(0f, 1f)
-                                val y = (offset.y / size.height).coerceIn(0f, 1f)
-                                lastX = x
-                                lastY = y
-                                onSendInput("click", x, y, mapOf("button" to "left", "count" to 2))
+                                mapPointerToNormalized(offset, size.width.toFloat(), size.height.toFloat(), image.width, image.height)?.let { (x, y) ->
+                                    lastX = x
+                                    lastY = y
+                                    onSendInput("click", x, y, mapOf("button" to "left", "count" to 2))
+                                }
                             },
                             onLongPress = { offset ->
-                                val x = (offset.x / size.width).coerceIn(0f, 1f)
-                                val y = (offset.y / size.height).coerceIn(0f, 1f)
-                                lastX = x
-                                lastY = y
-                                onSendInput("click", x, y, mapOf("button" to "right", "count" to 1))
+                                mapPointerToNormalized(offset, size.width.toFloat(), size.height.toFloat(), image.width, image.height)?.let { (x, y) ->
+                                    lastX = x
+                                    lastY = y
+                                    onSendInput("click", x, y, mapOf("button" to "right", "count" to 1))
+                                }
                             },
                         )
                     } else {
@@ -314,14 +345,18 @@ private fun ScreenFrame(
                     if (interactive) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                lastX = (offset.x / size.width).coerceIn(0f, 1f)
-                                lastY = (offset.y / size.height).coerceIn(0f, 1f)
-                                onSendInput("press", lastX, lastY, mapOf("button" to "left"))
+                                mapPointerToNormalized(offset, size.width.toFloat(), size.height.toFloat(), image.width, image.height)?.let { (x, y) ->
+                                    lastX = x
+                                    lastY = y
+                                    onSendInput("press", x, y, mapOf("button" to "left"))
+                                }
                             },
                             onDrag = { change, _ ->
-                                lastX = (change.position.x / size.width).coerceIn(0f, 1f)
-                                lastY = (change.position.y / size.height).coerceIn(0f, 1f)
-                                onSendInput("move", lastX, lastY, emptyMap())
+                                mapPointerToNormalized(change.position, size.width.toFloat(), size.height.toFloat(), image.width, image.height)?.let { (x, y) ->
+                                    lastX = x
+                                    lastY = y
+                                    onSendInput("move", x, y, emptyMap())
+                                }
                             },
                             onDragEnd = {
                                 onSendInput("release", lastX, lastY, mapOf("button" to "left"))
@@ -330,7 +365,32 @@ private fun ScreenFrame(
                     }
                 },
         ) {
-            Image(bitmap = image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth())
+            Image(bitmap = image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
         }
     }
+}
+
+private fun mapPointerToNormalized(
+    offset: Offset,
+    containerWidth: Float,
+    containerHeight: Float,
+    imageWidth: Int,
+    imageHeight: Int,
+): Pair<Float, Float>? {
+    if (containerWidth <= 0f || containerHeight <= 0f || imageWidth <= 0 || imageHeight <= 0) {
+        return null
+    }
+
+    val scale = minOf(containerWidth / imageWidth, containerHeight / imageHeight)
+    val fittedWidth = imageWidth * scale
+    val fittedHeight = imageHeight * scale
+    val left = (containerWidth - fittedWidth) / 2f
+    val top = (containerHeight - fittedHeight) / 2f
+    if (offset.x !in left..(left + fittedWidth) || offset.y !in top..(top + fittedHeight)) {
+        return null
+    }
+
+    val x = ((offset.x - left) / fittedWidth).coerceIn(0f, 1f)
+    val y = ((offset.y - top) / fittedHeight).coerceIn(0f, 1f)
+    return x to y
 }

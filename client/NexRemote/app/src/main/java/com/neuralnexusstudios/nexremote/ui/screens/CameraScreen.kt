@@ -44,9 +44,18 @@ fun CameraScreen(
     val frames by appContainer.cameraRepository.frames.collectAsState()
     val selected = remember { mutableStateListOf<Int>() }
     val active by appContainer.cameraRepository.activeCameras.collectAsState()
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        appContainer.cameraRepository.requestCameras()
+    val cameraAvailable = sessionState.connected &&
+        sessionState.capabilities?.cameraStreaming != false &&
+        sessionState.featureStatus["camera"]?.available != false
+    val cameraReason = sessionState.featureStatus["camera"]?.reason
+        ?: if (sessionState.capabilities?.cameraStreaming == false) "Camera streaming is not supported by the PC server." else null
+
+    LaunchedEffect(cameraAvailable) {
+        if (cameraAvailable) {
+            appContainer.cameraRepository.requestCameras()
+        }
     }
 
     LaunchedEffect(cameras) {
@@ -54,6 +63,8 @@ fun CameraScreen(
             selected += cameras.first().index
         }
     }
+
+
 
     Scaffold(
         topBar = {
@@ -91,12 +102,19 @@ fun CameraScreen(
                 }
             }
 
+            if (!cameraAvailable) {
+                Text(
+                    cameraReason ?: "Camera streaming is not ready yet.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
             Button(
                 onClick = {
                     if (active.isEmpty()) appContainer.cameraRepository.start(selected.toSet())
                     else appContainer.cameraRepository.stop()
                 },
-                enabled = selected.isNotEmpty(),
+                enabled = if (active.isEmpty()) selected.isNotEmpty() && cameraAvailable else true,
             ) {
                 Text(if (active.isEmpty()) "Start Streaming" else "Stop Streaming")
             }
@@ -109,7 +127,8 @@ fun CameraScreen(
                         Card {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(cameras.firstOrNull { it.index == entry.key }?.name ?: "Camera ${entry.key}")
-                                rememberJpegImage(entry.value)?.let { image ->
+                                val image by rememberJpegImage(entry.value)
+                                image?.let { image ->
                                     Image(
                                         bitmap = image,
                                         contentDescription = null,

@@ -94,7 +94,7 @@ internal sealed class NativeInputService
 
     public void SendMouse(JsonElement data)
     {
-        var action = GetString(data, "action");
+        var action = GetString(data, "input_action", GetString(data, "action"));
         switch (action.ToLowerInvariant())
         {
             case "move":
@@ -116,6 +116,32 @@ internal sealed class NativeInputService
                 Scroll(ReadInt32(data, "dx"), ReadInt32(data, "dy"));
                 break;
         }
+    }
+
+    public void MovePointerAbsolute(int x, int y) => MoveAbsolute(x, y);
+
+    public void ClickAt(int x, int y, string buttonName, int count)
+    {
+        MoveAbsolute(x, y);
+        Click(buttonName, count);
+    }
+
+    public void MouseDownAt(int x, int y, string buttonName)
+    {
+        MoveAbsolute(x, y);
+        MouseDown(buttonName);
+    }
+
+    public void MouseUpAt(int x, int y, string buttonName)
+    {
+        MoveAbsolute(x, y);
+        MouseUp(buttonName);
+    }
+
+    public void ScrollAt(int x, int y, int dx, int dy)
+    {
+        MoveAbsolute(x, y);
+        Scroll(dx, dy);
     }
 
     public async Task ReplayMacroAsync(JsonElement steps, CancellationToken cancellationToken = default)

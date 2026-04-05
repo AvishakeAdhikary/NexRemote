@@ -1,10 +1,16 @@
 {
   "profiles": {
     "NexRemote (Package)": {
-      "commandName": "MsixPackage"
+      "commandName": "MsixPackage",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
     },
     "NexRemote (Unpackaged)": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
     }
   }
 }

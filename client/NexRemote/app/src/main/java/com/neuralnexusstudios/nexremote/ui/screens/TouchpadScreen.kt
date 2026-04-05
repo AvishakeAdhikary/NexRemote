@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,11 +45,15 @@ fun TouchpadScreen(
     onBack: () -> Unit,
 ) {
     val settings by appContainer.preferences.settings.collectAsState()
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     var sensitivity by remember { mutableFloatStateOf(settings.gyroSensitivity.coerceIn(0.5f, 3f)) }
     val connection = appContainer.connectionRepository
     val performHaptic = rememberAppHaptics(settings.appHapticsEnabled)
+    val touchpadAvailable = sessionState.connected && sessionState.featureStatus["touchpad"]?.available != false
+    val touchpadReason = sessionState.featureStatus["touchpad"]?.reason
 
     fun mouseClick(button: String, count: Int = 1) {
+        if (!touchpadAvailable) return
         performHaptic(AppHapticStyle.Light)
         connection.sendMessage(mapOf("type" to "mouse", "action" to "click", "button" to button, "count" to count))
     }
@@ -64,6 +70,15 @@ fun TouchpadScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (!touchpadAvailable) {
+                Card {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Touchpad is not ready", style = MaterialTheme.typography.titleMedium)
+                        Text(touchpadReason ?: "The PC server has not enabled mouse input yet.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             Column {
                 Text("Sensitivity", style = MaterialTheme.typography.titleMedium)
                 Slider(
@@ -86,6 +101,7 @@ fun TouchpadScreen(
                         .pointerInput(sensitivity) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
+                                if (!touchpadAvailable) return@detectDragGestures
                                 connection.sendMessage(
                                     mapOf(
                                         "type" to "mouse",
@@ -118,6 +134,7 @@ fun TouchpadScreen(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
+                                if (!touchpadAvailable) return@detectDragGestures
                                 connection.sendMessage(
                                     mapOf(
                                         "type" to "mouse",
@@ -135,9 +152,9 @@ fun TouchpadScreen(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { mouseClick("left") }, modifier = Modifier.weight(1f)) { Text("Left") }
-                Button(onClick = { mouseClick("middle") }, modifier = Modifier.weight(1f)) { Text("Middle") }
-                Button(onClick = { mouseClick("right") }, modifier = Modifier.weight(1f)) { Text("Right") }
+                Button(onClick = { mouseClick("left") }, modifier = Modifier.weight(1f), enabled = touchpadAvailable) { Text("Left") }
+                Button(onClick = { mouseClick("middle") }, modifier = Modifier.weight(1f), enabled = touchpadAvailable) { Text("Middle") }
+                Button(onClick = { mouseClick("right") }, modifier = Modifier.weight(1f), enabled = touchpadAvailable) { Text("Right") }
             }
         }
     }

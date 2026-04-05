@@ -46,6 +46,42 @@ public sealed partial class RemoteServerHost
             await SendAsync(payload, WebSocketMessageType.Binary, cancellationToken).ConfigureAwait(false);
         }
 
+        public async Task<bool> TrySendBinaryAsync(byte[] payload, CancellationToken cancellationToken = default)
+        {
+            if (Socket.State != WebSocketState.Open)
+            {
+                return false;
+            }
+
+            if (!await _sendGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (Socket.State == WebSocketState.Open)
+                {
+                    await Socket.SendAsync(payload.AsMemory(), WebSocketMessageType.Binary, true, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+
+                return false;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (WebSocketException)
+            {
+                return false;
+            }
+            finally
+            {
+                _sendGate.Release();
+            }
+        }
+
         public void StopAllBackgroundWork()
         {
             foreach (var pair in ScreenTasks.ToArray())

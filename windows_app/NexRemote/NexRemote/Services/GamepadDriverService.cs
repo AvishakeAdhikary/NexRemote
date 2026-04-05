@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using NexRemote.Helpers;
 
 namespace NexRemote.Services;
 
@@ -9,6 +11,8 @@ public interface IGamepadDriverService
 {
     bool IsViGEmBusInstalled();
     Task<bool> IsViGEmBusInstalledAsync();
+    bool IsNativeTransportReady();
+    Task<bool> IsNativeTransportReadyAsync();
 }
 
 public sealed class GamepadDriverService : IGamepadDriverService
@@ -16,6 +20,10 @@ public sealed class GamepadDriverService : IGamepadDriverService
     public bool IsViGEmBusInstalled() => QueryViGEmBusInstalled();
 
     public Task<bool> IsViGEmBusInstalledAsync() => Task.Run(QueryViGEmBusInstalled);
+
+    public bool IsNativeTransportReady() => QueryViGEmBusInstalled() && !string.IsNullOrWhiteSpace(ResolveCompanionPath());
+
+    public Task<bool> IsNativeTransportReadyAsync() => Task.Run(IsNativeTransportReady);
 
     private static bool QueryViGEmBusInstalled()
     {
@@ -109,5 +117,24 @@ public sealed class GamepadDriverService : IGamepadDriverService
         {
             return false;
         }
+    }
+
+    private static string ResolveCompanionPath()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(PathHelper.GetToolsDirectory(), "gamepad-companion", "NexRemote.GamepadCompanion.exe"),
+            Path.Combine(AppContext.BaseDirectory, "gamepad-companion", "NexRemote.GamepadCompanion.exe")
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return string.Empty;
     }
 }

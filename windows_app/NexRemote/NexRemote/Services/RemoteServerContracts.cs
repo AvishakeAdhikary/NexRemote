@@ -59,6 +59,7 @@ public interface IRemoteServer
     DiscoveryResponse CreateDiscoveryResponse();
     QrConnectionPayload CreateQrPayload(string host);
     IReadOnlyDictionary<string, TrustedDeviceRecord> GetTrustedDevices();
+    IReadOnlyDictionary<string, FeatureStatusInfo> GetFeatureStatus();
 }
 
 public interface IConnectionApprovalService

@@ -31,6 +31,8 @@ public sealed partial class RemoteServerHost : IRemoteServer
     private readonly IMessageEncryptionService _encryptionService;
     private readonly ICertificateService _certificateService;
     private readonly IGamepadDriverService _gamepadDriverService;
+    private readonly IAdbBridgeService _adbBridgeService;
+    private readonly IClipboardService _clipboardService;
     private readonly ILogger<RemoteServerHost> _logger;
 
     private readonly NativeInputService _inputService = new();
@@ -59,6 +61,8 @@ public sealed partial class RemoteServerHost : IRemoteServer
         IMessageEncryptionService encryptionService,
         ICertificateService certificateService,
         IGamepadDriverService gamepadDriverService,
+        IAdbBridgeService adbBridgeService,
+        IClipboardService clipboardService,
         ILogger<RemoteServerHost> logger)
     {
         _settingsService = settingsService;
@@ -70,6 +74,8 @@ public sealed partial class RemoteServerHost : IRemoteServer
         _encryptionService = encryptionService;
         _certificateService = certificateService;
         _gamepadDriverService = gamepadDriverService;
+        _adbBridgeService = adbBridgeService;
+        _clipboardService = clipboardService;
         _logger = logger;
         RefreshCapabilities();
     }
@@ -93,6 +99,9 @@ public sealed partial class RemoteServerHost : IRemoteServer
     public IReadOnlyDictionary<string, TrustedDeviceRecord> GetTrustedDevices()
         => _trustedDeviceService.Devices;
 
+    public IReadOnlyDictionary<string, FeatureStatusInfo> GetFeatureStatus()
+        => CreateFeatureStatus();
+
     public void UpdateCapabilities(bool gamepadAvailable, string gamepadMode)
     {
         _gamepadMode = string.IsNullOrWhiteSpace(gamepadMode) ? "xinput" : gamepadMode;
@@ -101,7 +110,11 @@ public sealed partial class RemoteServerHost : IRemoteServer
 
     public void RefreshCapabilities()
     {
-        UpdateCapabilities(_gamepadDriverService.IsViGEmBusInstalled(), _gamepadMode);
+        var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady();
+        UpdateCapabilities(gamepadAvailable, _gamepadMode);
+        Capabilities.Gamepad = gamepadAvailable;
+        Capabilities.CameraStreaming = Settings.CameraAccessConsentGranted;
+        Capabilities.Clipboard = true;
     }
 
     public void RaiseClientConnected(string clientId, string deviceName)
@@ -152,7 +165,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
                 if (context.WebSockets.IsWebSocketRequest)
                 {
                     using var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-                    await HandleClientAsync(socket, serverCts.Token).ConfigureAwait(false);
+                    await HandleClientAsync(socket, context.Request.IsHttps, serverCts.Token).ConfigureAwait(false);
                     return;
                 }
 
@@ -176,18 +189,6 @@ public sealed partial class RemoteServerHost : IRemoteServer
         }
         catch
         {
-            try
-            {
-                Directory.CreateDirectory(PathHelper.GetLogsDirectory());
-                File.AppendAllText(
-                    Path.Combine(PathHelper.GetLogsDirectory(), "startup.log"),
-                    $"[{DateTimeOffset.Now:O}] RemoteServerHost.StartAsync failed.{Environment.NewLine}");
-            }
-            catch
-            {
-                // ignored
-            }
-
             await StopCoreAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
@@ -419,4 +420,49 @@ public sealed partial class RemoteServerHost : IRemoteServer
 
         return result;
     }
+
+    private IReadOnlyDictionary<string, FeatureStatusInfo> CreateFeatureStatus()
+    {
+        var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady();
+        var gamepadDriverInstalled = _gamepadDriverService.IsViGEmBusInstalled();
+        var adbStatus = _adbBridgeService.CurrentStatus;
+
+        return new Dictionary<string, FeatureStatusInfo>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["touchpad"] = Available("Remote pointer and keyboard control are ready."),
+            ["media_control"] = Available("Media control is ready."),
+            ["screen_share"] = Available("Screen sharing is ready."),
+            ["file_explorer"] = Available("File explorer is ready."),
+            ["task_manager"] = Available("Task manager is ready."),
+            ["clipboard"] = Available("Clipboard sync is ready."),
+            ["camera"] = Settings.CameraAccessConsentGranted
+                ? Available("Camera streaming is ready.")
+                : Unavailable("Camera streaming requires local consent on the PC.", "grant_camera_consent"),
+            ["gamepad"] = gamepadAvailable
+                ? Available("Native gamepad transport is ready.")
+                : gamepadDriverInstalled
+                    ? Unavailable("Install the NexRemote gamepad companion to activate native controller transport.", "install_gamepad_companion")
+                    : Unavailable("Install ViGEmBus to enable native gamepad transport.", "install_vigem"),
+            ["usb_bridge"] = adbStatus.ToolAvailable
+                ? adbStatus.ReverseActive
+                    ? Available(adbStatus.Reason)
+                    : Unavailable(adbStatus.Reason, adbStatus.DeviceAuthorized ? "connect_device" : "authorize_device")
+                : Unavailable("ADB platform-tools are not bundled or installed yet.", "install_platform_tools")
+        };
+    }
+
+    private static FeatureStatusInfo Available(string reason) => new()
+    {
+        Supported = true,
+        Available = true,
+        Reason = reason
+    };
+
+    private static FeatureStatusInfo Unavailable(string reason, string actionRequired) => new()
+    {
+        Supported = true,
+        Available = false,
+        Reason = reason,
+        ActionRequired = actionRequired
+    };
 }

@@ -60,7 +60,9 @@ class FileExplorerRepository(private val connectionRepository: NexRemoteConnecti
                                 FileProperties(
                                     name = payload.string("name").orEmpty(),
                                     path = payload.string("path").orEmpty(),
-                                    type = payload.string("type").orEmpty(),
+                                    kind = payload.string("kind")
+                                        ?: payload.string("item_type")
+                                        ?: if (payload.bool("is_directory") == true) "directory" else "file",
                                     size = payload["size"]?.toString().orEmpty(),
                                     modified = payload.string("modified").orEmpty(),
                                     created = payload.string("created").orEmpty(),

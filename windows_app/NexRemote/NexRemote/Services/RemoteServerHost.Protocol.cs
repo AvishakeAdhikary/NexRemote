@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -13,7 +14,7 @@ namespace NexRemote.Services;
 
 public sealed partial class RemoteServerHost
 {
-    private async Task HandleClientAsync(WebSocket socket, CancellationToken cancellationToken)
+    private async Task HandleClientAsync(WebSocket socket, bool secureTransport, CancellationToken cancellationToken)
     {
         RemoteClientSession? session = null;
         string? clientId = null;
@@ -36,6 +37,12 @@ public sealed partial class RemoteServerHost
 
             clientId = authMessage!.DeviceId;
             deviceName = authMessage.DeviceName;
+            var trustedRecord = _authenticationService.GetTrustedDevice(clientId);
+            var trusted = trustedRecord is not null;
+            var hasStoredPublicKey = !string.IsNullOrWhiteSpace(trustedRecord?.PublicKey);
+            var publicKey = hasStoredPublicKey
+                ? trustedRecord!.PublicKey
+                : authMessage.ClientPublicKey ?? string.Empty;
 
             if (!Settings.EnableRemoteAccess)
             {
@@ -51,7 +58,49 @@ public sealed partial class RemoteServerHost
                 return;
             }
 
-            var trusted = _authenticationService.IsTrusted(clientId);
+            if (secureTransport)
+            {
+                if (string.IsNullOrWhiteSpace(publicKey))
+                {
+                    _logger.LogInformation("Rejected secure client {ClientId} because no public key was provided.", clientId);
+                    await SendPlainAsync(socket, _authenticationService.BuildAuthFailed(), cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                if (trusted &&
+                    hasStoredPublicKey &&
+                    !string.IsNullOrWhiteSpace(authMessage.ClientPublicKey) &&
+                    !string.Equals(trustedRecord!.PublicKey, authMessage.ClientPublicKey, StringComparison.Ordinal))
+                {
+                    _logger.LogInformation("Rejected secure client {ClientId} because its public key changed.", clientId);
+                    await SendPlainAsync(socket, _authenticationService.BuildAuthFailed(), cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                if (trusted && !hasStoredPublicKey && !string.IsNullOrWhiteSpace(authMessage.ClientPublicKey))
+                {
+                    _logger.LogInformation(
+                        "Upgrading legacy trusted device {ClientId} with a newly supplied public key.",
+                        clientId);
+                }
+
+                var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+                await SendPlainAsync(
+                    socket,
+                    _authenticationService.BuildAuthChallenge(Settings, Capabilities, GetFeatureStatus(), nonce),
+                    cancellationToken).ConfigureAwait(false);
+
+                var responsePayload = await ReceiveTextMessageAsync(socket, TimeSpan.FromSeconds(15), cancellationToken).ConfigureAwait(false);
+                if (!_authenticationService.TryParseAuthResponsePayload(responsePayload ?? string.Empty, out var authResponse) ||
+                    !string.Equals(authResponse!.DeviceId, clientId, StringComparison.OrdinalIgnoreCase) ||
+                    !_authenticationService.VerifyResponseSignature(publicKey, nonce, authResponse.Signature))
+                {
+                    _logger.LogInformation("Rejected secure client {ClientId} because pairing proof failed.", clientId);
+                    await SendPlainAsync(socket, _authenticationService.BuildAuthFailed(), cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+            }
+
             if (!trusted && Settings.RequireApproval)
             {
                 trusted = await _approvalService.RequestApprovalAsync(
@@ -67,14 +116,14 @@ public sealed partial class RemoteServerHost
                 }
             }
 
-            _authenticationService.RecordTrust(clientId, deviceName);
+            _authenticationService.RecordTrust(clientId, deviceName, publicKey);
             await _trustedDeviceService.SaveAsync(cancellationToken).ConfigureAwait(false);
 
             session = new RemoteClientSession(clientId, deviceName, socket);
             RegisterSession(session);
 
             _logger.LogInformation("Accepted client {ClientId} ({DeviceName}).", clientId, deviceName);
-            await SendPlainAsync(socket, _authenticationService.BuildAuthSuccess(Settings, Capabilities), cancellationToken).ConfigureAwait(false);
+            await SendPlainAsync(socket, _authenticationService.BuildAuthSuccess(Settings, Capabilities, GetFeatureStatus()), cancellationToken).ConfigureAwait(false);
             RaiseClientConnected(clientId, deviceName);
 
             await ProcessMessagesAsync(session, cancellationToken).ConfigureAwait(false);
@@ -130,6 +179,7 @@ public sealed partial class RemoteServerHost
             switch (type)
             {
                 case ProtocolConstants.AuthType:
+                case ProtocolConstants.AuthResponseType:
                     break;
                 case "keyboard":
                     _inputService.SendKeyboard(message);
@@ -152,7 +202,8 @@ public sealed partial class RemoteServerHost
                     {
                         type = "gamepad_mode",
                         mode = _gamepadMode,
-                        status = new { available = Capabilities.GamepadAvailable, mode = _gamepadMode }
+                        status = new { available = Capabilities.GamepadAvailable, mode = _gamepadMode },
+                        feature_status = GetFeatureStatus()
                     }, cancellationToken).ConfigureAwait(false);
                     break;
                 case "macro":
@@ -188,6 +239,7 @@ public sealed partial class RemoteServerHost
                     await SendEncryptedAsync(session, await _taskManagerService.HandleRequestAsync(message).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
                     break;
                 case "clipboard":
+                    await SendEncryptedAsync(session, _clipboardService.HandleRequest(message), cancellationToken).ConfigureAwait(false);
                     break;
                 default:
                     _logger.LogDebug("Unknown message type: {MessageType}", type);

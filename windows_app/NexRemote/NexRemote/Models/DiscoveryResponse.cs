@@ -24,6 +24,9 @@ public sealed class DiscoveryResponse
     [JsonPropertyName("version")]
     public string Version { get; set; } = "1.0.0";
 
+    [JsonPropertyName("cert_fingerprint")]
+    public string CertFingerprint { get; set; } = string.Empty;
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

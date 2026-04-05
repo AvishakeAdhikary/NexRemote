@@ -14,6 +14,8 @@ public static class ProtocolConstants
     public const string DiscoveryResponseType = "discovery_response";
     public const string AuthSuccessType = "auth_success";
     public const string AuthFailedType = "auth_failed";
+    public const string AuthChallengeType = "auth_challenge";
+    public const string AuthResponseType = "auth_response";
     public const string ConnectionRejectedType = "connection_rejected";
     public const string PingType = "ping";
     public const string PongType = "pong";

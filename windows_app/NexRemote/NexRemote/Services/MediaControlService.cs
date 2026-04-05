@@ -25,17 +25,34 @@ internal sealed class MediaControlService
             switch (action)
             {
                 case "play":
+                    if (!await TryInvokeSessionAsync(session => session.TryPlayAsync().AsTask()).ConfigureAwait(false))
+                    {
+                        SendMediaKey(VkMediaPlayPause);
+                    }
+                    return null;
                 case "pause":
-                    SendMediaKey(VkMediaPlayPause);
+                    if (!await TryInvokeSessionAsync(session => session.TryPauseAsync().AsTask()).ConfigureAwait(false))
+                    {
+                        SendMediaKey(VkMediaPlayPause);
+                    }
                     return null;
                 case "stop":
-                    SendMediaKey(VkMediaStop);
+                    if (!await TryInvokeSessionAsync(session => session.TryStopAsync().AsTask()).ConfigureAwait(false))
+                    {
+                        SendMediaKey(VkMediaStop);
+                    }
                     return null;
                 case "next":
-                    SendMediaKey(VkMediaNextTrack);
+                    if (!await TryInvokeSessionAsync(session => session.TrySkipNextAsync().AsTask()).ConfigureAwait(false))
+                    {
+                        SendMediaKey(VkMediaNextTrack);
+                    }
                     return null;
                 case "previous":
-                    SendMediaKey(VkMediaPrevTrack);
+                    if (!await TryInvokeSessionAsync(session => session.TrySkipPreviousAsync().AsTask()).ConfigureAwait(false))
+                    {
+                        SendMediaKey(VkMediaPrevTrack);
+                    }
                     return null;
                 case "volume":
                     SetVolume(ReadInt32(data, "value", 50));
@@ -50,6 +67,7 @@ internal sealed class MediaControlService
                     SendMediaKey(VkVolumeDown);
                     return null;
                 case "seek":
+                    await TrySeekAsync(ReadInt32(data, "position", 0)).ConfigureAwait(false);
                     return null;
                 case "get_info":
                     return await GetFullStateAsync().ConfigureAwait(false);
@@ -91,10 +109,25 @@ internal sealed class MediaControlService
                 var playback = session.GetPlaybackInfo();
                 hasMedia = playback is not null;
                 isPlaying = playback?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+                var timeline = session.GetTimelineProperties();
 
                 var properties = await session.TryGetMediaPropertiesAsync().AsTask().ConfigureAwait(false);
                 title = properties.Title ?? string.Empty;
                 artist = properties.Artist ?? string.Empty;
+
+                return new
+                {
+                    type = "media_control",
+                    action = "media_info",
+                    volume,
+                    is_muted = isMuted,
+                    title = string.IsNullOrWhiteSpace(properties.Title) ? (hasMedia ? "Now Playing" : "No Media Playing") : properties.Title,
+                    artist,
+                    is_playing = isPlaying,
+                    has_media = hasMedia,
+                    position = (long)timeline.Position.TotalMilliseconds,
+                    duration = (long)timeline.EndTime.TotalMilliseconds
+                };
             }
         }
         catch
@@ -120,6 +153,30 @@ internal sealed class MediaControlService
             position = 0,
             duration = 0
         };
+    }
+
+    private static async Task<bool> TryInvokeSessionAsync(Func<GlobalSystemMediaTransportControlsSession, Task<bool>> action)
+    {
+        try
+        {
+            var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().ConfigureAwait(false);
+            var session = manager.GetCurrentSession();
+            return session is not null && await action(session).ConfigureAwait(false);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task TrySeekAsync(int positionMs)
+    {
+        if (positionMs < 0)
+        {
+            return;
+        }
+
+        await TryInvokeSessionAsync(session => session.TryChangePlaybackPositionAsync((long)positionMs * TimeSpan.TicksPerMillisecond).AsTask()).ConfigureAwait(false);
     }
 
     private static void SendMediaKey(int vk)

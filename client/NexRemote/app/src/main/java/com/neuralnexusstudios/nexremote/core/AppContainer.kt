@@ -11,16 +11,19 @@ import com.neuralnexusstudios.nexremote.core.network.DiscoveryRepository
 import com.neuralnexusstudios.nexremote.core.network.NexRemoteConnectionRepository
 import com.neuralnexusstudios.nexremote.core.storage.AppPreferences
 import com.neuralnexusstudios.nexremote.core.storage.CertificateStore
+import com.neuralnexusstudios.nexremote.core.storage.ClientIdentityStore
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
 
     val preferences = AppPreferences(appContext)
     val certificateStore = CertificateStore(appContext)
+    val clientIdentityStore = ClientIdentityStore(appContext)
     val connectionRepository = NexRemoteConnectionRepository(
         context = appContext,
         preferences = preferences,
         certificateStore = certificateStore,
+        clientIdentityStore = clientIdentityStore,
     )
     val discoveryRepository = DiscoveryRepository(appContext)
     val mediaRepository = MediaRepository(connectionRepository)

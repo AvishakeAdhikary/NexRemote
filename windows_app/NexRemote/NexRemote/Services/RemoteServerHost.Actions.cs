@@ -68,6 +68,8 @@ public sealed partial class RemoteServerHost
                         name = display.Name,
                         width = display.Width,
                         height = display.Height,
+                        left = display.Bounds.Left,
+                        top = display.Bounds.Top,
                         is_primary = display.IsPrimary
                     }).ToArray(),
                     active_displays = session.ScreenTasks.Keys.OrderBy(value => value).ToArray(),
@@ -78,7 +80,7 @@ public sealed partial class RemoteServerHost
                 break;
             }
             case "input":
-                _inputService.SendMouse(message);
+                await HandleScreenShareInputAsync(message).ConfigureAwait(false);
                 break;
         }
     }
@@ -240,7 +242,7 @@ public sealed partial class RemoteServerHost
                     if (frame.Length > 0)
                     {
                         var payload = BuildBinaryFrame(ProtocolConstants.ScreenFrameHeader, (byte)(displayIndex & 0xFF), frame);
-                        await session.SendBinaryAsync(payload, loopCts.Token).ConfigureAwait(false);
+                        await session.TrySendBinaryAsync(payload, loopCts.Token).ConfigureAwait(false);
                     }
 
                     var delay = Math.Max(1, 1000 / Math.Max(1, session.ScreenFps));
@@ -298,9 +300,14 @@ public sealed partial class RemoteServerHost
             {
                 while (!loopCts.IsCancellationRequested && session.Socket.State == WebSocketState.Open)
                 {
-                    var frame = CreatePlaceholderCameraFrame(cameraIndex);
+                    var frame = await _cameraCaptureService.CaptureFrameAsync(cameraIndex, loopCts.Token).ConfigureAwait(false);
+                    if (frame.Length == 0)
+                    {
+                        frame = CreatePlaceholderCameraFrame(cameraIndex);
+                    }
+
                     var payload = BuildBinaryFrame(ProtocolConstants.CameraFrameHeader, (byte)(cameraIndex & 0xFF), frame);
-                    await session.SendBinaryAsync(payload, loopCts.Token).ConfigureAwait(false);
+                    await session.TrySendBinaryAsync(payload, loopCts.Token).ConfigureAwait(false);
                     await Task.Delay(250, loopCts.Token).ConfigureAwait(false);
                 }
             }
@@ -353,5 +360,57 @@ public sealed partial class RemoteServerHost
         using var stream = new MemoryStream();
         bitmap.Save(stream, ImageFormat.Jpeg);
         return stream.ToArray();
+    }
+
+    private Task HandleScreenShareInputAsync(JsonElement message)
+    {
+        var monitors = _screenCaptureService.GetMonitors();
+        var monitorIndex = ReadInt32(message, "monitor_index", 0);
+        var monitor = monitors.FirstOrDefault(display => display.Index == monitorIndex) ?? monitors.FirstOrDefault();
+        if (monitor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var x = ResolveScreenCoordinate(message, "normalized_x", "x", monitor.Bounds.Left, monitor.Bounds.Width);
+        var y = ResolveScreenCoordinate(message, "normalized_y", "y", monitor.Bounds.Top, monitor.Bounds.Height);
+        var inputAction = GetString(message, "input_action", GetString(message, "action")).ToLowerInvariant();
+        var button = GetString(message, "button", "left");
+
+        switch (inputAction)
+        {
+            case "move":
+                _inputService.MovePointerAbsolute(x, y);
+                break;
+            case "press":
+                _inputService.MouseDownAt(x, y, button);
+                break;
+            case "release":
+                _inputService.MouseUpAt(x, y, button);
+                break;
+            case "click":
+                _inputService.ClickAt(x, y, button, Math.Max(1, ReadInt32(message, "count", 1)));
+                break;
+            case "scroll":
+                _inputService.ScrollAt(
+                    x,
+                    y,
+                    ReadInt32(message, "wheel_dx", ReadInt32(message, "dx", 0)),
+                    ReadInt32(message, "wheel_dy", ReadInt32(message, "dy", 0)));
+                break;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static int ResolveScreenCoordinate(JsonElement message, string normalizedProperty, string fallbackProperty, int offset, int size)
+    {
+        if (message.TryGetProperty(normalizedProperty, out var normalizedProp) && normalizedProp.TryGetDouble(out var normalized))
+        {
+            var clamped = Math.Clamp(normalized, 0, 1);
+            return offset + (int)Math.Round(clamped * Math.Max(0, size - 1));
+        }
+
+        return offset + Math.Clamp(ReadInt32(message, fallbackProperty, 0), 0, Math.Max(0, size - 1));
     }
 }

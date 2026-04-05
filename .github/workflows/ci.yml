@@ -1,112 +1,163 @@
 name: NexRemote CI/CD
 
 on:
+  pull_request:
+    branches: [master]
   push:
     branches: [master]
     tags: ['v*']
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-# jobs:
-#   # ── Windows Executable ──
-#   build-windows:
-#     name: Build Windows EXE
-#     runs-on: windows-latest
-#     steps:
-#       - uses: actions/checkout@v4
+env:
+  CI: true
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+  WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+  WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+  ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+  ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+  ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
-#       - name: Install uv
-#         uses: astral-sh/setup-uv@v5
+jobs:
+  windows:
+    name: Windows ${{ matrix.runtime }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: x64
+            artifact: NexRemote-win-x64.zip
+          - runtime: arm64
+            artifact: NexRemote-win-arm64.zip
+          - runtime: x86
+            artifact: NexRemote-win-x86.zip
+    if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
 
-#       - name: Setup Python
-#         uses: actions/setup-python@v5
-#         with:
-#           python-version: '3.13'
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-#       - name: Install dependencies
-#         working-directory: windows_app/src
-#         run: uv sync
+      - name: Build Windows package
+        shell: pwsh
+        run: .\scripts\build.ps1 -Configuration Release -SkipAndroid -WindowsRuntime ${{ matrix.runtime }}
 
-#       - name: Build executable
-#         working-directory: windows_app/src
-#         run: |
-#           uv run python -m PyInstaller `
-#             --name "NexRemote" `
-#             --icon "assets/images/logo.ico" `
-#             --windowed `
-#             --onefile `
-#             --add-data "assets;assets" `
-#             --noconfirm `
-#             main.py
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.runtime }}
+          path: dist/windows/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 14
 
-#       - name: Upload Windows artifact
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: NexRemote-Windows
-#           path: windows_app/src/dist/NexRemote.exe
-#           retention-days: 30
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-#   # ── Android APK ──
-#   build-android:
-#     name: Build Android APK
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-#       - name: Setup Java
-#         uses: actions/setup-java@v4
-#         with:
-#           distribution: temurin
-#           java-version: '17'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-#       - name: Setup Flutter
-#         uses: subosito/flutter-action@v2
-#         with:
-#           channel: stable
+      - name: Install Android packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-#       - name: Get dependencies
-#         working-directory: nexremote
-#         run: flutter pub get
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
-#       - name: Build APK
-#         working-directory: nexremote
-#         run: flutter build apk --release
+      - name: Build Android package
+        shell: pwsh
+        run: .\scripts\build.ps1 -Configuration Release -SkipWindows -AndroidBundle
 
-#       - name: Upload Android artifact
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: NexRemote-Android
-#           path: nexremote/build/app/outputs/flutter-apk/app-release.apk
-#           retention-days: 30
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            dist/android/NexRemote-android-release.apk
+            dist/android/NexRemote-android-release.aab
+            dist/android/mapping.txt
+          if-no-files-found: error
+          retention-days: 14
 
-#   # ── Release ──
-#   release:
-#     name: Create Release
-#     needs: [build-windows, build-android]
-#     if: startsWith(github.ref, 'refs/tags/v')
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Download Windows artifact
-#         uses: actions/download-artifact@v4
-#         with:
-#           name: NexRemote-Windows
-#           path: ./release
+  release-edge:
+    name: Release Edge
+    runs-on: ubuntu-latest
+    needs: [windows, android]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    concurrency:
+      group: nexremote-edge-release
+      cancel-in-progress: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: windows-*
+          merge-multiple: true
 
-#       - name: Download Android artifact
-#         uses: actions/download-artifact@v4
-#         with:
-#           name: NexRemote-Android
-#           path: ./release
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: android
+          merge-multiple: true
 
-#       - name: Create GitHub Release
-#         uses: softprops/action-gh-release@v2
-#         with:
-#           files: |
-#             release/NexRemote.exe
-#             release/app-release.apk
-#           generate_release_notes: true
-#           draft: false
-#           prerelease: false
+      - name: Publish edge prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: edge
+          target_commitish: ${{ github.sha }}
+          name: NexRemote Edge
+          prerelease: true
+          make_latest: false
+          generate_release_notes: true
+          overwrite_files: true
+          files: release/*
+
+  release-versioned:
+    name: Release Versioned
+    runs-on: ubuntu-latest
+    needs: [windows, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    concurrency:
+      group: nexremote-versioned-${{ github.ref_name }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: windows-*
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: android
+          merge-multiple: true
+
+      - name: Publish versioned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: NexRemote ${{ github.ref_name }}
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          overwrite_files: true
+          files: release/*

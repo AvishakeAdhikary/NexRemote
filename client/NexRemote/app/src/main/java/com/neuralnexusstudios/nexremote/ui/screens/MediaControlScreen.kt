@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.automirrored.outlined.VolumeMute
@@ -43,10 +44,19 @@ fun MediaControlScreen(
     onBack: () -> Unit,
 ) {
     val state by appContainer.mediaRepository.state.collectAsState()
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
+    val mediaAvailable = sessionState.connected && sessionState.featureStatus["media_control"]?.available != false
+    val mediaReason = sessionState.featureStatus["media_control"]?.reason
     var pendingVolume by remember { mutableFloatStateOf(state.volume.toFloat().coerceAtLeast(0f)) }
 
-    LaunchedEffect(Unit) {
-        appContainer.mediaRepository.requestInfo()
+    LaunchedEffect(mediaAvailable) {
+        if (mediaAvailable) {
+            appContainer.mediaRepository.requestInfo()
+        }
+    }
+
+    LaunchedEffect(state.volume) {
+        pendingVolume = state.volume.toFloat().coerceIn(0f, 100f)
     }
 
     Scaffold(
@@ -61,6 +71,15 @@ fun MediaControlScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            if (!mediaAvailable) {
+                Card {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Media control is not ready", style = MaterialTheme.typography.titleMedium)
+                        Text(mediaReason ?: "The PC server has not enabled media control yet.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             Card {
                 Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.MusicNote, contentDescription = null)
@@ -70,12 +89,12 @@ fun MediaControlScreen(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MediaButton("Prev", Icons.Outlined.FastRewind, modifier = Modifier.weight(1f)) { appContainer.mediaRepository.previous() }
-                MediaButton(if (state.isPlaying) "Pause" else "Play", if (state.isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, modifier = Modifier.weight(1f)) {
+                MediaButton("Prev", Icons.Outlined.FastRewind, modifier = Modifier.weight(1f), enabled = mediaAvailable) { appContainer.mediaRepository.previous() }
+                MediaButton(if (state.isPlaying) "Pause" else "Play", if (state.isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, modifier = Modifier.weight(1f), enabled = mediaAvailable) {
                     if (state.isPlaying) appContainer.mediaRepository.pause() else appContainer.mediaRepository.play()
                 }
-                MediaButton("Stop", Icons.Outlined.Stop, modifier = Modifier.weight(1f)) { appContainer.mediaRepository.stop() }
-                MediaButton("Next", Icons.Outlined.FastForward, modifier = Modifier.weight(1f)) { appContainer.mediaRepository.next() }
+                MediaButton("Stop", Icons.Outlined.Stop, modifier = Modifier.weight(1f), enabled = mediaAvailable) { appContainer.mediaRepository.stop() }
+                MediaButton("Next", Icons.Outlined.FastForward, modifier = Modifier.weight(1f), enabled = mediaAvailable) { appContainer.mediaRepository.next() }
             }
 
             Card {
@@ -84,13 +103,14 @@ fun MediaControlScreen(
                     Slider(
                         value = pendingVolume.coerceIn(0f, 100f),
                         onValueChange = { pendingVolume = it },
-                        onValueChangeFinished = { appContainer.mediaRepository.setVolume(pendingVolume.toInt()) },
+                        onValueChangeFinished = { if (mediaAvailable) appContainer.mediaRepository.setVolume(pendingVolume.toInt()) },
                         valueRange = 0f..100f,
+                        enabled = mediaAvailable,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                        MediaButton("Mute", Icons.AutoMirrored.Outlined.VolumeMute, modifier = Modifier.weight(1f)) { appContainer.mediaRepository.muteToggle() }
-                        MediaButton("Vol -", Icons.AutoMirrored.Outlined.VolumeDown, modifier = Modifier.weight(1f)) { appContainer.mediaRepository.volumeDown() }
-                        MediaButton("Vol +", Icons.AutoMirrored.Outlined.VolumeUp, modifier = Modifier.weight(1f)) { appContainer.mediaRepository.volumeUp() }
+                        MediaButton("Mute", Icons.AutoMirrored.Outlined.VolumeMute, modifier = Modifier.weight(1f), enabled = mediaAvailable) { appContainer.mediaRepository.muteToggle() }
+                        MediaButton("Vol -", Icons.AutoMirrored.Outlined.VolumeDown, modifier = Modifier.weight(1f), enabled = mediaAvailable) { appContainer.mediaRepository.volumeDown() }
+                        MediaButton("Vol +", Icons.AutoMirrored.Outlined.VolumeUp, modifier = Modifier.weight(1f), enabled = mediaAvailable) { appContainer.mediaRepository.volumeUp() }
                     }
                 }
             }
@@ -103,9 +123,10 @@ private fun MediaButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    Button(onClick = onClick, modifier = modifier) {
+    Button(onClick = onClick, modifier = modifier, enabled = enabled) {
         Icon(icon, contentDescription = null)
         Text(label, modifier = Modifier.padding(start = 8.dp))
     }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,17 +67,24 @@ fun TaskManagerScreen(
     val snackbars = remember { SnackbarHostState() }
     val processes by appContainer.taskManagerRepository.processes.collectAsState()
     val systemInfo by appContainer.taskManagerRepository.systemInfo.collectAsState()
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     val history = remember { mutableStateListOf<SystemInfo>() }
     var search by remember { mutableStateOf("") }
     var sortKey by remember { mutableStateOf(ProcessSortKey.Cpu) }
     var ascending by remember { mutableStateOf(false) }
     var showGraphs by remember { mutableStateOf(true) }
+    val taskManagerAvailable = sessionState.connected && sessionState.featureStatus["task_manager"]?.available != false
+    val taskManagerReason = sessionState.featureStatus["task_manager"]?.reason
 
     LaunchedEffect(Unit) {
         launch {
             while (true) {
-                appContainer.taskManagerRepository.requestProcesses()
-                appContainer.taskManagerRepository.requestSystemInfo()
+                val ready = appContainer.connectionRepository.serverSessionState.value.connected &&
+                    appContainer.connectionRepository.serverSessionState.value.featureStatus["task_manager"]?.available != false
+                if (ready) {
+                    appContainer.taskManagerRepository.requestProcesses()
+                    appContainer.taskManagerRepository.requestSystemInfo()
+                }
                 delay(2_000)
             }
         }
@@ -119,8 +127,12 @@ fun TaskManagerScreen(
                         Icon(Icons.Outlined.BarChart, contentDescription = "Toggle graphs")
                     }
                     IconButton(onClick = {
-                        appContainer.taskManagerRepository.requestProcesses()
-                        appContainer.taskManagerRepository.requestSystemInfo()
+                        if (taskManagerAvailable) {
+                            appContainer.taskManagerRepository.requestProcesses()
+                            appContainer.taskManagerRepository.requestSystemInfo()
+                        } else {
+                            scope.launch { snackbars.showSnackbar(taskManagerReason ?: "Task Manager is not ready yet.") }
+                        }
                     }) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
@@ -136,6 +148,15 @@ fun TaskManagerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (!taskManagerAvailable) {
+                Card {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Task Manager is not ready", style = MaterialTheme.typography.titleMedium)
+                        Text(taskManagerReason ?: "The PC server has not enabled process telemetry yet.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             SystemSummaryCard(systemInfo = systemInfo)
 
             if (showGraphs) {
@@ -166,7 +187,14 @@ fun TaskManagerScreen(
                 items(filtered, key = { it.pid }) { process ->
                     ProcessRow(
                         process = process,
-                        onEnd = { appContainer.taskManagerRepository.endProcess(process.pid) },
+                        onEnd = {
+                            if (taskManagerAvailable) {
+                                appContainer.taskManagerRepository.endProcess(process.pid)
+                            } else {
+                                scope.launch { snackbars.showSnackbar(taskManagerReason ?: "Task Manager is not ready yet.") }
+                            }
+                        },
+                        enabled = taskManagerAvailable,
                     )
                 }
             }
@@ -320,6 +348,7 @@ private fun RowScope.HeaderCell(
 private fun ProcessRow(
     process: ProcessInfo,
     onEnd: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Card {
         Row(
@@ -339,7 +368,7 @@ private fun ProcessRow(
             Text(process.pid.toString(), modifier = Modifier.weight(0.14f))
             Text("${"%.1f".format(process.cpu)}%", modifier = Modifier.weight(0.18f), color = cpuColor(process.cpu))
             Text(formatBytes(process.memory), modifier = Modifier.weight(0.18f))
-            TextButton(onClick = onEnd, modifier = Modifier.weight(0.18f)) {
+            TextButton(onClick = onEnd, modifier = Modifier.weight(0.18f), enabled = enabled) {
                 Text("End")
             }
         }

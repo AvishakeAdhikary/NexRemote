@@ -1,5 +1,6 @@
 package com.neuralnexusstudios.nexremote.core.feature
 
+import android.os.SystemClock
 import com.neuralnexusstudios.nexremote.core.model.DisplayInfo
 import com.neuralnexusstudios.nexremote.core.network.NexRemoteConnectionRepository
 import com.neuralnexusstudios.nexremote.core.network.bool
@@ -16,6 +17,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.util.concurrent.ConcurrentHashMap
 
 class ScreenShareRepository(private val connectionRepository: NexRemoteConnectionRepository) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -25,7 +27,8 @@ class ScreenShareRepository(private val connectionRepository: NexRemoteConnectio
     private val _fps = MutableStateFlow(30)
     private val _quality = MutableStateFlow(70)
     private val _resolution = MutableStateFlow("native")
-    private val screenSizes = mutableMapOf<Int, Pair<Int, Int>>()
+    private val displayGeometry = ConcurrentHashMap<Int, DisplayInfo>()
+    private var lastMoveSentAtMs = 0L
 
     val displays: StateFlow<List<DisplayInfo>> = _displays
     val frames: StateFlow<Map<Int, ByteArray>> = _frames
@@ -42,14 +45,17 @@ class ScreenShareRepository(private val connectionRepository: NexRemoteConnectio
                         item.jsonObject.let {
                             DisplayInfo(
                                 index = it.int("index") ?: 0,
-                                name = it.string("name") ?: "Display",
-                                width = it.int("width") ?: 1920,
-                                height = it.int("height") ?: 1080,
-                                isPrimary = it.bool("is_primary") ?: false,
+                                    name = it.string("name") ?: "Display",
+                                    width = it.int("width") ?: 1920,
+                                    height = it.int("height") ?: 1080,
+                                    left = it.int("left") ?: it.int("x") ?: 0,
+                                    top = it.int("top") ?: it.int("y") ?: 0,
+                                    isPrimary = it.bool("is_primary") ?: false,
                             )
                         }
                     }.orEmpty()
-                    displays.forEach { screenSizes[it.index] = it.width to it.height }
+                    displayGeometry.clear()
+                    displays.forEach { displayGeometry[it.index] = it }
                     _displays.value = displays
                     _activeDisplays.value = payload["active_displays"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull }.orEmpty()
                     _fps.value = payload.int("current_fps") ?: _fps.value
@@ -115,16 +121,41 @@ class ScreenShareRepository(private val connectionRepository: NexRemoteConnectio
         connectionRepository.sendMessage(mapOf("type" to "screen_share", "action" to "set_resolution", "resolution" to resolution))
     }
 
-    fun sendInput(monitorIndex: Int, action: String, rx: Float, ry: Float, extras: Map<String, Any?> = emptyMap()) {
-        val (width, height) = screenSizes[monitorIndex] ?: (1920 to 1080)
+    fun sendInput(
+        monitorIndex: Int,
+        action: String,
+        normalizedX: Float,
+        normalizedY: Float,
+        extras: Map<String, Any?> = emptyMap(),
+    ) {
+        if (action == "move") {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastMoveSentAtMs < 16L) {
+                return
+            }
+            lastMoveSentAtMs = now
+        }
+
+        val display = displayGeometry[monitorIndex]
+        val width = display?.width?.coerceAtLeast(1) ?: 1920
+        val height = display?.height?.coerceAtLeast(1) ?: 1080
+        val localX = (normalizedX.coerceIn(0f, 1f) * width).toInt()
+        val localY = (normalizedY.coerceIn(0f, 1f) * height).toInt()
+        val absoluteX = (display?.left ?: 0) + localX
+        val absoluteY = (display?.top ?: 0) + localY
+
         connectionRepository.sendMessage(
             mapOf(
                 "type" to "screen_share",
                 "action" to "input",
                 "monitor_index" to monitorIndex,
                 "input_action" to action,
-                "x" to (rx * width).toInt(),
-                "y" to (ry * height).toInt(),
+                "normalized_x" to normalizedX.coerceIn(0f, 1f),
+                "normalized_y" to normalizedY.coerceIn(0f, 1f),
+                "monitor_x" to localX,
+                "monitor_y" to localY,
+                "x" to absoluteX,
+                "y" to absoluteY,
             ) + extras,
         )
     }

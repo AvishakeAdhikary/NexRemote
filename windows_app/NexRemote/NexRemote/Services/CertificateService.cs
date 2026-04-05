@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -14,6 +15,7 @@ public interface ICertificateService
     string PrivateKeyPath { get; }
     Task EnsureCertificateAsync(CancellationToken cancellationToken = default);
     Task<string?> GetThumbprintAsync(CancellationToken cancellationToken = default);
+    Task<string?> GetFingerprintAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class CertificateService : ICertificateService
@@ -76,6 +78,21 @@ public sealed class CertificateService : ICertificateService
         {
             using var cert = X509Certificate2.CreateFromPemFile(CertificatePath, PrivateKeyPath);
             return cert.Thumbprint;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<string?> GetFingerprintAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(CertificatePath))
+        {
+            return null;
+        }
+
+        return await Task.Run(() =>
+        {
+            using var cert = X509Certificate2.CreateFromPemFile(CertificatePath, PrivateKeyPath);
+            var hash = SHA256.HashData(cert.RawData);
+            return string.Join(":", hash.Select(static b => b.ToString("X2")));
         }, cancellationToken).ConfigureAwait(false);
     }
 }

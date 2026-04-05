@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -105,14 +106,25 @@ fun FileExplorerScreen(
     var clipboardPath by remember { mutableStateOf<String?>(null) }
     var clipboardCut by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
+    val fileTransferAvailable = sessionState.connected &&
+        sessionState.capabilities?.fileTransfer != false &&
+        sessionState.featureStatus["file_explorer"]?.available != false
+    val fileTransferReason = sessionState.featureStatus["file_explorer"]?.reason
+        ?: if (sessionState.capabilities?.fileTransfer == false) "File transfer is not supported by the PC server." else null
 
     fun load(path: String) {
         currentPath = path
         appContainer.fileExplorerRepository.requestList(path)
     }
 
+    LaunchedEffect(fileTransferAvailable) {
+        if (fileTransferAvailable) {
+            load(currentPath)
+        }
+    }
+
     LaunchedEffect(Unit) {
-        load(currentPath)
         appContainer.fileExplorerRepository.events.collect { event ->
             when (event) {
                 is FileExplorerEvent.Listing -> {
@@ -159,46 +171,60 @@ fun FileExplorerScreen(
             search = search,
             canGoUp = history.size > 1,
             hasClipboard = clipboardPath != null,
+            enabled = fileTransferAvailable,
+            featureReason = fileTransferReason,
             onBack = onBack,
             onSearchChange = { search = it },
             onSearch = {
-                if (search.isBlank()) load(currentPath) else appContainer.fileExplorerRepository.search(currentPath, search.trim())
+                if (fileTransferAvailable) {
+                    if (search.isBlank()) load(currentPath) else appContainer.fileExplorerRepository.search(currentPath, search.trim())
+                }
             },
             onClearSearch = {
                 search = ""
-                load(currentPath)
+                if (fileTransferAvailable) load(currentPath)
             },
-            onReload = { load(currentPath) },
+            onReload = { if (fileTransferAvailable) load(currentPath) },
             onUp = {
-                history.removeAt(history.lastIndex)
-                load(history.last())
+                if (fileTransferAvailable) {
+                    history.removeAt(history.lastIndex)
+                    load(history.last())
+                }
             },
-            onNewFolder = { createType = "folder" },
-            onNewFile = { createType = "file" },
+            onNewFolder = { if (fileTransferAvailable) createType = "folder" },
+            onNewFile = { if (fileTransferAvailable) createType = "file" },
             onPaste = {
-                val source = clipboardPath ?: return@FileBrowserPage
-                if (clipboardCut) appContainer.fileExplorerRepository.move(source, currentPath)
-                else appContainer.fileExplorerRepository.copy(source, currentPath)
-                clipboardPath = null
-                clipboardCut = false
+                if (fileTransferAvailable) {
+                    val source = clipboardPath ?: return@FileBrowserPage
+                    if (clipboardCut) appContainer.fileExplorerRepository.move(source, currentPath)
+                    else appContainer.fileExplorerRepository.copy(source, currentPath)
+                    clipboardPath = null
+                    clipboardCut = false
+                }
             },
             onOpenDirectory = { item ->
-                history += item.path
-                load(item.path)
+                if (fileTransferAvailable) {
+                    history += item.path
+                    load(item.path)
+                }
             },
-            onOpenFile = { appContainer.fileExplorerRepository.readFile(it.path) },
-            onOpenOnPc = { appContainer.fileExplorerRepository.openFile(it.path) },
-            onRename = { renameItem = it },
+            onOpenFile = { if (fileTransferAvailable) appContainer.fileExplorerRepository.readFile(it.path) },
+            onOpenOnPc = { if (fileTransferAvailable) appContainer.fileExplorerRepository.openFile(it.path) },
+            onRename = { if (fileTransferAvailable) renameItem = it },
             onCopy = {
-                clipboardPath = it.path
-                clipboardCut = false
+                if (fileTransferAvailable) {
+                    clipboardPath = it.path
+                    clipboardCut = false
+                }
             },
             onCut = {
-                clipboardPath = it.path
-                clipboardCut = true
+                if (fileTransferAvailable) {
+                    clipboardPath = it.path
+                    clipboardCut = true
+                }
             },
-            onProperties = { appContainer.fileExplorerRepository.properties(it.path) },
-            onDelete = { appContainer.fileExplorerRepository.delete(it.path) },
+            onProperties = { if (fileTransferAvailable) appContainer.fileExplorerRepository.properties(it.path) },
+            onDelete = { if (fileTransferAvailable) appContainer.fileExplorerRepository.delete(it.path) },
         )
     }
 
@@ -234,7 +260,7 @@ fun FileExplorerScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Name: ${properties.name}")
                     Text("Path: ${properties.path}")
-                    Text("Type: ${properties.type}")
+                    Text("Kind: ${properties.kind}")
                     Text("Size: ${properties.size}")
                     Text("Modified: ${properties.modified}")
                     Text("Created: ${properties.created}")
@@ -273,6 +299,8 @@ private fun FileBrowserPage(
     search: String,
     canGoUp: Boolean,
     hasClipboard: Boolean,
+    enabled: Boolean,
+    featureReason: String?,
     onBack: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSearch: () -> Unit,
@@ -290,7 +318,7 @@ private fun FileBrowserPage(
     onCut: (FileItem) -> Unit,
     onProperties: (FileItem) -> Unit,
     onDelete: (FileItem) -> Unit,
-) {
+    ) {
     val snackbars = remember { SnackbarHostState() }
 
     Scaffold(
@@ -330,6 +358,15 @@ private fun FileBrowserPage(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (!enabled) {
+                Card {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("File Explorer is not ready", style = MaterialTheme.typography.titleMedium)
+                        Text(featureReason ?: "The PC server has not enabled file transfer yet.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = search,
                 onValueChange = onSearchChange,
@@ -351,6 +388,7 @@ private fun FileBrowserPage(
                 items(files, key = { it.path }) { item ->
                     FileItemCard(
                         item = item,
+                        enabled = enabled,
                         onOpen = { if (item.isDirectory) onOpenDirectory(item) else onOpenFile(item) },
                         onOpenOnPc = { onOpenOnPc(item) },
                         onRename = { onRename(item) },
@@ -368,6 +406,7 @@ private fun FileBrowserPage(
 @Composable
 private fun FileItemCard(
     item: FileItem,
+    enabled: Boolean,
     onOpen: () -> Unit,
     onOpenOnPc: () -> Unit,
     onRename: () -> Unit,
@@ -379,7 +418,7 @@ private fun FileItemCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen),
+            .clickable(enabled = enabled, onClick = onOpen),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -408,14 +447,14 @@ private fun FileItemCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (!item.isDirectory) {
-                    SmallAction("Open on PC", Icons.AutoMirrored.Outlined.OpenInNew, onOpenOnPc)
-                    SmallAction("Edit", Icons.Outlined.Edit, onOpen)
+                    SmallAction("Open on PC", Icons.AutoMirrored.Outlined.OpenInNew, enabled, onOpenOnPc)
+                    SmallAction("Edit", Icons.Outlined.Edit, enabled, onOpen)
                 }
-                SmallAction("Rename", Icons.Outlined.Edit, onRename)
-                SmallAction("Copy", Icons.Outlined.Description, onCopy)
-                SmallAction("Cut", Icons.Outlined.SyncAlt, onCut)
-                SmallAction("Properties", Icons.Outlined.Info, onProperties)
-                SmallAction("Delete", Icons.Outlined.Delete, onDelete)
+                SmallAction("Rename", Icons.Outlined.Edit, enabled, onRename)
+                SmallAction("Copy", Icons.Outlined.Description, enabled, onCopy)
+                SmallAction("Cut", Icons.Outlined.SyncAlt, enabled, onCut)
+                SmallAction("Properties", Icons.Outlined.Info, enabled, onProperties)
+                SmallAction("Delete", Icons.Outlined.Delete, enabled, onDelete)
             }
         }
     }
@@ -425,9 +464,10 @@ private fun FileItemCard(
 private fun SmallAction(
     label: String,
     icon: ImageVector,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    TextButton(onClick = onClick) {
+    TextButton(onClick = onClick, enabled = enabled) {
         Icon(icon, contentDescription = null)
         Text(label, modifier = Modifier.padding(start = 6.dp))
     }

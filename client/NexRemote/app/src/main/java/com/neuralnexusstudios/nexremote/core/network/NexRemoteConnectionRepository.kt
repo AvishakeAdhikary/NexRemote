@@ -1,8 +1,13 @@
 package com.neuralnexusstudios.nexremote.core.network
 
 import android.content.Context
+import com.neuralnexusstudios.nexremote.BuildConfig
 import com.neuralnexusstudios.nexremote.core.model.ConnectionStatus
+import com.neuralnexusstudios.nexremote.core.model.FeatureStatus
 import com.neuralnexusstudios.nexremote.core.model.ServerInfo
+import com.neuralnexusstudios.nexremote.core.model.ServerCapabilities
+import com.neuralnexusstudios.nexremote.core.model.ServerSessionState
+import com.neuralnexusstudios.nexremote.core.storage.ClientIdentityStore
 import com.neuralnexusstudios.nexremote.core.storage.AppPreferences
 import com.neuralnexusstudios.nexremote.core.storage.CertificateStore
 import kotlinx.coroutines.CompletableDeferred
@@ -21,6 +26,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -39,6 +49,7 @@ class NexRemoteConnectionRepository(
     context: Context,
     private val preferences: AppPreferences,
     private val certificateStore: CertificateStore,
+    private val clientIdentityStore: ClientIdentityStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -75,17 +86,20 @@ class NexRemoteConnectionRepository(
     private var lastSecurePort: Int? = null
     private var lastInsecurePort: Int? = null
     private var lastTrySecureFirst: Boolean = true
+    private var lastExpectedCertificateFingerprint: String? = null
     private var deviceId: String = ""
     private var deviceName: String = ""
 
     private val _connectionState = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     private val _connectedDeviceName = MutableStateFlow("")
+    private val _serverSessionState = MutableStateFlow(ServerSessionState())
     private val _messages = MutableSharedFlow<JsonObject>(extraBufferCapacity = 64)
     private val _binaryFrames = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
     val connectionState: StateFlow<ConnectionStatus> = _connectionState
     val connectedDeviceName: StateFlow<String> = _connectedDeviceName
+    val serverSessionState: StateFlow<ServerSessionState> = _serverSessionState
     val messages: SharedFlow<JsonObject> = _messages
     val binaryFrames: SharedFlow<ByteArray> = _binaryFrames
     val events: SharedFlow<String> = _events
@@ -98,6 +112,7 @@ class NexRemoteConnectionRepository(
             insecurePort = server.portInsecure,
             deviceId = settings.deviceId,
             deviceName = settings.deviceName,
+            expectedCertificateFingerprint = server.certificateFingerprint,
             trySecureFirst = trySecureFirst,
         )
     }
@@ -108,6 +123,7 @@ class NexRemoteConnectionRepository(
         insecurePort: Int,
         deviceId: String,
         deviceName: String,
+        expectedCertificateFingerprint: String? = null,
         trySecureFirst: Boolean = true,
     ): Boolean = mutex.withLock {
         intentionalDisconnect = false
@@ -116,18 +132,19 @@ class NexRemoteConnectionRepository(
         lastSecurePort = securePort
         lastInsecurePort = insecurePort
         lastTrySecureFirst = trySecureFirst && preferences.settings.value.useSecureConnection
+        lastExpectedCertificateFingerprint = expectedCertificateFingerprint
         this.deviceId = deviceId
         this.deviceName = deviceName
         preferences.updateLastServer("$host:$securePort")
 
         if (lastTrySecureFirst) {
-            when (attemptConnection(host, securePort, secure = true)) {
+            when (attemptConnection(host, securePort, secure = true, expectedCertificateFingerprint = expectedCertificateFingerprint)) {
                 AttemptResult.Success -> return true
                 AttemptResult.CertificateRejected -> return false
                 AttemptResult.Failure -> Unit
             }
         }
-        return attemptConnection(host, insecurePort, secure = false) == AttemptResult.Success
+        return attemptConnection(host, insecurePort, secure = false, expectedCertificateFingerprint = null) == AttemptResult.Success
     }
 
     suspend fun connectUsb(port: Int = 8766): Boolean {
@@ -156,6 +173,7 @@ class NexRemoteConnectionRepository(
         webSocket = null
         _connectionState.value = ConnectionStatus.DISCONNECTED
         _connectedDeviceName.value = ""
+        _serverSessionState.value = ServerSessionState()
     }
 
     fun sendMessage(payload: Map<String, Any?>) {
@@ -169,8 +187,14 @@ class NexRemoteConnectionRepository(
         webSocket?.send(json)
     }
 
-    private suspend fun attemptConnection(host: String, port: Int, secure: Boolean): AttemptResult {
+    private suspend fun attemptConnection(
+        host: String,
+        port: Int,
+        secure: Boolean,
+        expectedCertificateFingerprint: String? = null,
+    ): AttemptResult {
         val authResult = CompletableDeferred<AttemptResult>()
+        val authState = AuthHandshakeState(secure = secure)
         val wsUrl = "${if (secure) "wss" else "ws"}://$host:$port"
         _connectionState.value = ConnectionStatus.CONNECTING
 
@@ -178,7 +202,7 @@ class NexRemoteConnectionRepository(
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 if (secure) {
                     val certificate = response.handshake?.peerCertificates?.firstOrNull()
-                    if (certificate != null && !certificateStore.trustOrVerify(host, certificate)) {
+                    if (certificate != null && !certificateStore.trustOrVerify(host, certificate, expectedCertificateFingerprint)) {
                         authResult.complete(AttemptResult.CertificateRejected)
                         webSocket.close(1008, "Certificate mismatch")
                         return
@@ -191,13 +215,15 @@ class NexRemoteConnectionRepository(
                         "type" to "auth",
                         "device_id" to deviceId,
                         "device_name" to deviceName,
-                        "version" to "1.0.0",
+                        "client_public_key" to clientIdentityStore.publicKeyBase64,
+                        "client_version" to BuildConfig.VERSION_NAME,
+                        "platform" to "android",
                     ),
                 )
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                handleIncomingText(text, authResult)
+                handleIncomingText(text, authResult, authState)
             }
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
@@ -254,18 +280,63 @@ class NexRemoteConnectionRepository(
         }
     }
 
-    private fun handleIncomingText(text: String, authResult: CompletableDeferred<AttemptResult>) {
+    private fun handleIncomingText(
+        text: String,
+        authResult: CompletableDeferred<AttemptResult>,
+        authState: AuthHandshakeState,
+    ) {
         val plainJson = runCatching { JsonCodec.parseToJsonElement(text).jsonObject }.getOrNull()
         val decoded = plainJson ?: runCatching {
             JsonCodec.parseToJsonElement(CryptoUtils.decryptBase64(text)).jsonObject
         }.getOrNull()
         val payload = decoded ?: return
         when (payload.string("type")) {
+            "auth_challenge" -> {
+                val nonce = decodeNonce(payload)
+                if (nonce == null) {
+                    _events.tryEmit("The server sent an invalid auth challenge.")
+                    webSocket?.close(1008, "Invalid challenge")
+                    authResult.complete(AttemptResult.Failure)
+                    return
+                }
+
+                authState.challengeSeen = true
+                authState.challengeNonce = nonce
+                updateServerSessionState(payload, connected = false)
+                val signature = runCatching { clientIdentityStore.signNonce(nonce) }.getOrNull()
+                if (signature == null) {
+                    _events.tryEmit("Unable to sign the server challenge for secure pairing.")
+                    webSocket?.close(1011, "Signing failed")
+                    authResult.complete(AttemptResult.Failure)
+                    return
+                }
+                sendRawJson(
+                    mapOf(
+                        "type" to "auth_response",
+                        "device_id" to deviceId,
+                        "signature" to signature,
+                    ),
+                )
+            }
             "auth_success" -> {
+                if (authState.secure && !authState.challengeSeen) {
+                    _events.tryEmit("Secure pairing requires a server challenge before accepting auth success.")
+                    webSocket?.close(1008, "Challenge required")
+                    authResult.complete(AttemptResult.Failure)
+                    return
+                }
                 _connectionState.value = ConnectionStatus.CONNECTED
                 _connectedDeviceName.value = payload.string("server_name") ?: payload.string("name").orEmpty()
+                updateServerSessionState(payload, connected = true)
                 _messages.tryEmit(payload)
                 authResult.complete(AttemptResult.Success)
+            }
+            "feature_status", "server_status" -> {
+                _serverSessionState.value = _serverSessionState.value.copy(
+                    connected = _connectionState.value == ConnectionStatus.CONNECTED,
+                    featureStatus = extractFeatureStatus(payload),
+                )
+                _messages.tryEmit(payload)
             }
             "auth_failed", "connection_rejected" -> {
                 _messages.tryEmit(payload)
@@ -284,6 +355,7 @@ class NexRemoteConnectionRepository(
             scheduleReconnect()
         } else {
             _connectionState.value = ConnectionStatus.DISCONNECTED
+            _serverSessionState.value = ServerSessionState()
         }
     }
 
@@ -318,6 +390,7 @@ class NexRemoteConnectionRepository(
                     insecurePort = lastInsecurePort ?: 8766,
                     deviceId = deviceId,
                     deviceName = deviceName,
+                    expectedCertificateFingerprint = lastExpectedCertificateFingerprint,
                     trySecureFirst = lastTrySecureFirst,
                 )
                 if (success) break
@@ -333,5 +406,52 @@ class NexRemoteConnectionRepository(
         Success,
         Failure,
         CertificateRejected,
+    }
+
+    private data class AuthHandshakeState(
+        val secure: Boolean,
+        var challengeSeen: Boolean = false,
+        var challengeNonce: ByteArray? = null,
+    )
+
+    private fun parseFeatureStatusMap(objectValue: JsonObject?): Map<String, FeatureStatus> {
+        if (objectValue == null) return emptyMap()
+        return objectValue.mapValues { (_, value) ->
+            runCatching { JsonCodec.decodeFromJsonElement<FeatureStatus>(value) }.getOrDefault(FeatureStatus())
+        }
+    }
+
+    private fun updateServerSessionState(payload: JsonObject, connected: Boolean) {
+        _serverSessionState.value = ServerSessionState(
+            serverName = payload.string("server_name") ?: payload.string("name").orEmpty(),
+            connected = connected,
+            capabilities = payload["capabilities"]?.let { runCatching { JsonCodec.decodeFromJsonElement<ServerCapabilities>(it) }.getOrNull() },
+            featureStatus = extractFeatureStatus(payload),
+        )
+    }
+
+    private fun extractFeatureStatus(payload: JsonObject): Map<String, FeatureStatus> {
+        payload["feature_status"]?.jsonObject?.let { return parseFeatureStatusMap(it) }
+        val reservedKeys = setOf("type", "server_name", "name", "capabilities", "feature_status")
+        val featureObject = payload.filterKeys { it !in reservedKeys }
+        return if (featureObject.isEmpty()) emptyMap() else parseFeatureStatusMap(JsonObject(featureObject))
+    }
+
+    private fun decodeNonce(payload: JsonObject): ByteArray? {
+        payload.string("nonce")?.let { value ->
+            return runCatching { java.util.Base64.getDecoder().decode(value) }
+                .getOrElse { runCatching { hexToBytes(value) }.getOrNull() }
+        }
+
+        val bytes = payload["nonce"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull?.toByte() }
+        return bytes?.takeIf { it.isNotEmpty() }?.toByteArray()
+    }
+
+    private fun hexToBytes(value: String): ByteArray {
+        val cleaned = value.replace(" ", "").replace(":", "")
+        require(cleaned.length % 2 == 0) { "Invalid hex nonce" }
+        return ByteArray(cleaned.length / 2) { index ->
+            cleaned.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        }
     }
 }

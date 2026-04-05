@@ -1,218 +1,343 @@
-# NexRemote Production Build Script
-# Builds Windows .exe (via PyInstaller) and Android .apk (via Flutter).
-# Usage: .\scripts\build.ps1 [-SkipWindows] [-SkipAndroid]
-#
-# Prerequisites:
-#   - Python venv with PyInstaller: cd windows_app\src && uv sync
-#   - Flutter SDK in PATH
-#   - Android SDK configured for Flutter
+# NexRemote production build script
+# Builds the current WinUI 3 server and native Android client into dist/.
 
 param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Release',
+
     [switch]$SkipWindows,
-    [switch]$SkipAndroid
+    [switch]$SkipAndroid,
+    [switch]$NoTests,
+    [switch]$AndroidBundle,
+
+    [ValidateSet('x64', 'arm64', 'x86', 'win-x64', 'win-arm64', 'win-x86')]
+    [string]$WindowsRuntime = 'x64'
 )
 
-$ErrorActionPreference = "Stop"
-
-# ── UTF-8 ──
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
 
-$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$windowsApp = Join-Path $root "windows_app\src"
-$windowsAppRoot = Join-Path $root "windows_app"
-$flutterApp = Join-Path $root "nexremote"
-$distDir = Join-Path $root "dist"
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$windowsProject = Join-Path (Join-Path (Join-Path (Join-Path $root 'windows_app') 'NexRemote') 'NexRemote') 'NexRemote.csproj'
+$androidProject = Join-Path (Join-Path $root 'client') 'NexRemote'
+$distRoot = Join-Path $root 'dist'
+$windowsDistRoot = Join-Path $distRoot 'windows'
+$androidDistRoot = Join-Path $distRoot 'android'
 
-Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║     NexRemote Production Build         ║" -ForegroundColor Cyan
-Write-Host "╚════════════════════════════════════════╝`n" -ForegroundColor Cyan
-
-# Ensure dist directory
-New-Item -ItemType Directory -Path $distDir -Force | Out-Null
-
-$buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$success = @()
-$failed = @()
-
-# ── Windows Build ──
-if (-not $SkipWindows) {
-    Write-Host "━━━ [1] Building Windows Executable ━━━" -ForegroundColor Yellow
-    
-    if (-not (Test-Path (Join-Path $windowsApp ".venv"))) {
-        Write-Host "  → Setting up Python venv..." -ForegroundColor DarkGray
-        Push-Location $windowsApp
-        uv sync
-        Pop-Location
-    }
-    
-    $specFile = Join-Path $windowsAppRoot "nexremote.spec"
-    
-    if (Test-Path $specFile) {
-        Write-Host "  → Running PyInstaller with spec file..." -ForegroundColor DarkGray
-        # IMPORTANT: Run from windows_app/ (not windows_app/src/) because
-        # the spec file uses paths like 'src/main.py' relative to windows_app/.
-        Push-Location $windowsAppRoot
-        & "$windowsApp\.venv\Scripts\python.exe" -m PyInstaller $specFile `
-            --distpath (Join-Path $distDir "windows") `
-            --workpath (Join-Path $root "build\pyinstaller") `
-            --noconfirm
-        Pop-Location
-    } else {
-        Write-Host "  → Running PyInstaller (auto-config)..." -ForegroundColor DarkGray
-        Push-Location $windowsAppRoot
-        $icoPath = Join-Path $windowsApp "assets\images\logo.ico"
-        & "$windowsApp\.venv\Scripts\python.exe" -m PyInstaller `
-            --name "NexRemote" `
-            --icon $icoPath `
-            --console `
-            --onefile `
-            --add-data "src\assets;assets" `
-            --add-data "src\utils\elevated_ops.py;utils" `
-            --hidden-import "core.server" `
-            --hidden-import "core.server_thread" `
-            --hidden-import "core.discovery" `
-            --hidden-import "core.connection_manager" `
-            --hidden-import "core.certificate_manager" `
-            --hidden-import "core.usb_detector" `
-            --hidden-import "core.nat_traversal" `
-            --hidden-import "ui.main_window" `
-            --hidden-import "ui.settings_dialog" `
-            --hidden-import "ui.connection_dialog" `
-            --hidden-import "ui.terms_dialog" `
-            --hidden-import "ui.tray_icon" `
-            --hidden-import "ui.file_explorer" `
-            --hidden-import "ui.task_manager" `
-            --hidden-import "security.encryption" `
-            --hidden-import "security.authentication" `
-            --hidden-import "security.audit_logger" `
-            --hidden-import "security.firewall_config" `
-            --hidden-import "input.virtual_keyboard" `
-            --hidden-import "input.virtual_mouse" `
-            --hidden-import "input.virtual_gamepad" `
-            --hidden-import "input.media_controller" `
-            --hidden-import "input.input_validator" `
-            --hidden-import "streaming.screen_capture" `
-            --hidden-import "streaming.camera_streamer" `
-            --hidden-import "streaming.audio_capture" `
-            --hidden-import "streaming.virtual_camera" `
-            --hidden-import "utils.paths" `
-            --hidden-import "utils.config" `
-            --hidden-import "utils.logger" `
-            --hidden-import "utils.elevate" `
-            --hidden-import "utils.elevated_ops" `
-            --hidden-import "utils.protocol" `
-            --hidden-import "utils.vigem_setup" `
-            --hidden-import "PyQt6.sip" `
-            --hidden-import "PyQt6.QtCore" `
-            --hidden-import "PyQt6.QtGui" `
-            --hidden-import "PyQt6.QtWidgets" `
-            --hidden-import "websockets" `
-            --hidden-import "websockets.legacy" `
-            --hidden-import "websockets.legacy.server" `
-            --hidden-import "mss" `
-            --hidden-import "mss.windows" `
-            --hidden-import "cv2" `
-            --hidden-import "numpy" `
-            --hidden-import "loguru" `
-            --hidden-import "qrcode" `
-            --hidden-import "PIL" `
-            --hidden-import "PIL.Image" `
-            --hidden-import "cryptography" `
-            --hidden-import "psutil" `
-            --hidden-import "pynput" `
-            --hidden-import "pynput.keyboard._win32" `
-            --hidden-import "pynput.mouse._win32" `
-            --hidden-import "vgamepad" `
-            --hidden-import "pycaw" `
-            --hidden-import "pycaw.pycaw" `
-            --hidden-import "comtypes" `
-            --hidden-import "comtypes.client" `
-            --hidden-import "pyperclip" `
-            --exclude-module "evdev" `
-            --exclude-module "Xlib" `
-            --exclude-module "AppKit" `
-            --exclude-module "Quartz" `
-            --distpath (Join-Path $distDir "windows") `
-            --workpath (Join-Path $root "build\pyinstaller") `
-            --noconfirm `
-            "src\main.py"
-        Pop-Location
-    }
-    
-    if ($LASTEXITCODE -eq 0) {
-        $exePath = Join-Path $distDir "windows\NexRemote.exe"
-        if (Test-Path $exePath) {
-            $size = [math]::Round((Get-Item $exePath).Length / 1MB, 1)
-            Write-Host "  ✓ Windows build complete: $exePath ($($size) MB)" -ForegroundColor Green
-            $success += "Windows EXE"
-        } else {
-            Write-Host "  ✗ Windows build output not found" -ForegroundColor Red
-            $failed += "Windows EXE"
-        }
-    } else {
-        Write-Host "  ✗ Windows build failed (exit code $LASTEXITCODE)" -ForegroundColor Red
-        $failed += "Windows EXE"
-    }
-    Write-Host ""
+function Write-Section {
+    param([string]$Text)
+    Write-Host "`n==> $Text" -ForegroundColor Cyan
 }
 
-# ── Android Build ──
-if (-not $SkipAndroid) {
-    Write-Host "━━━ [2] Building Android APK ━━━" -ForegroundColor Yellow
-    
-    $flutterExe = Get-Command flutter -ErrorAction SilentlyContinue
-    if (-not $flutterExe) {
-        Write-Host "  ✗ Flutter not found in PATH" -ForegroundColor Red
-        $failed += "Android APK"
-    } else {
-        Push-Location $flutterApp
-        
-        Write-Host "  → Getting dependencies..." -ForegroundColor DarkGray
-        flutter pub get | Out-Null
-        
-        Write-Host "  → Building release APK..." -ForegroundColor DarkGray
-        flutter build apk --release
-        
-        if ($LASTEXITCODE -eq 0) {
-            $apkSource = Join-Path $flutterApp "build\app\outputs\flutter-apk\app-release.apk"
-            if (Test-Path $apkSource) {
-                $apkDest = Join-Path $distDir "android\NexRemote.apk"
-                New-Item -ItemType Directory -Path (Join-Path $distDir "android") -Force | Out-Null
-                Copy-Item $apkSource $apkDest -Force
-                $size = [math]::Round((Get-Item $apkDest).Length / 1MB, 1)
-                Write-Host "  ✓ Android build complete: $apkDest ($($size) MB)" -ForegroundColor Green
-                $success += "Android APK"
-            } else {
-                Write-Host "  ✗ APK output not found at $apkSource" -ForegroundColor Red
-                $failed += "Android APK"
+function Resolve-WindowsRuntimeIdentifier {
+    param([string]$Runtime)
+
+    switch ($Runtime.ToLowerInvariant()) {
+        'x64' { 'win-x64' }
+        'arm64' { 'win-arm64' }
+        'x86' { 'win-x86' }
+        default { $Runtime }
+    }
+}
+
+function Resolve-WindowsPublishProfile {
+    param([string]$RuntimeIdentifier)
+
+    switch ($RuntimeIdentifier) {
+        'win-x64' { 'win-x64.pubxml' }
+        'win-arm64' { 'win-arm64.pubxml' }
+        'win-x86' { 'win-x86.pubxml' }
+        default { throw "Unsupported Windows runtime identifier: $RuntimeIdentifier" }
+    }
+}
+
+function Resolve-AdbCommand {
+    $adb = Get-Command adb -ErrorAction SilentlyContinue
+    if ($adb) {
+        return $adb.Source
+    }
+
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $roots += $env:ANDROID_SDK_ROOT }
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) { $roots += $env:ANDROID_HOME }
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { $roots += (Join-Path (Join-Path $env:LOCALAPPDATA 'Android') 'Sdk') }
+    $roots += 'C:\Android\Sdk'
+
+    foreach ($rootPath in $roots) {
+        $candidate = Join-Path $rootPath 'platform-tools\adb.exe'
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Invoke-CommandChecked {
+    param(
+        [scriptblock]$ScriptBlock,
+        [string]$Message
+    )
+
+    & $ScriptBlock
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Message failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Copy-ArtifactIfExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+
+    if (-not (Test-Path $Source)) {
+        return $false
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
+    Copy-Item $Source $Destination -Force
+    return $true
+}
+
+function Sign-WindowsPublish {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PublishDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_PASSWORD)) {
+        return
+    }
+
+    $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+
+    if (-not $signtool) {
+        Write-Warning 'Windows code-signing certificate was provided, but signtool.exe was not found. Leaving Windows binaries unsigned.'
+        return
+    }
+
+    $certPath = Join-Path $env:TEMP 'nexremote-signing.pfx'
+    [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGN_CERT_BASE64))
+    $timestamp = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_TIMESTAMP_URL)) { 'http://timestamp.digicert.com' } else { $env:WINDOWS_SIGN_TIMESTAMP_URL }
+
+    Get-ChildItem $PublishDir -Recurse -File |
+        Where-Object { $_.Extension -in '.exe', '.dll', '.msix', '.appx' } |
+        ForEach-Object {
+            & $signtool.FullName sign /f $certPath /p $env:WINDOWS_SIGN_CERT_PASSWORD /fd SHA256 /tr $timestamp /td SHA256 $_.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to sign Windows artifact: $($_.FullName)"
             }
-        } else {
-            Write-Host "  ✗ Android build failed (exit code $LASTEXITCODE)" -ForegroundColor Red
-            $failed += "Android APK"
         }
-        
-        Pop-Location
+}
+
+function Resolve-AndroidApkSigner {
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $roots += $env:ANDROID_SDK_ROOT }
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) { $roots += $env:ANDROID_HOME }
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { $roots += (Join-Path (Join-Path $env:LOCALAPPDATA 'Android') 'Sdk') }
+
+    foreach ($rootPath in $roots) {
+        $candidate = Get-ChildItem (Join-Path $rootPath 'build-tools') -Recurse -File -Filter apksigner* -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($candidate) {
+            return $candidate.FullName
+        }
     }
-    Write-Host ""
+
+    return $null
 }
 
-# ── Summary ──
-Write-Host "`n╔════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║            Build Summary               ║" -ForegroundColor Cyan
-Write-Host "╠════════════════════════════════════════╣" -ForegroundColor Cyan
-Write-Host "║  Time: $buildTime       ║" -ForegroundColor DarkGray
+function Sign-AndroidPublish {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ReleaseApk,
 
-if ($success.Count -gt 0) {
-    Write-Host "║  ✓ Success: $($success -join ', ')" -ForegroundColor Green
-}
-if ($failed.Count -gt 0) {
-    Write-Host "║  ✗ Failed:  $($failed -join ', ')" -ForegroundColor Red
-}
-Write-Host "║  Output: $distDir" -ForegroundColor DarkGray
-Write-Host "╚════════════════════════════════════════╝`n" -ForegroundColor Cyan
+        [string]$ReleaseBundle
+    )
 
-if ($failed.Count -gt 0) {
-    exit 1
+    if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEYSTORE_BASE64) -or
+        [string]::IsNullOrWhiteSpace($env:ANDROID_KEYSTORE_PASSWORD) -or
+        [string]::IsNullOrWhiteSpace($env:ANDROID_KEY_ALIAS)) {
+        return
+    }
+
+    $storePassword = $env:ANDROID_KEYSTORE_PASSWORD
+    $keyPassword = if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEY_PASSWORD)) { $storePassword } else { $env:ANDROID_KEY_PASSWORD }
+    $keystorePath = Join-Path $env:TEMP 'nexremote-android-release.jks'
+    [IO.File]::WriteAllBytes($keystorePath, [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
+
+    $apksigner = Resolve-AndroidApkSigner
+    if ($apksigner -and (Test-Path $ReleaseApk)) {
+        $signedApk = Join-Path (Split-Path -Parent $ReleaseApk) 'NexRemote-android-release-signed.apk'
+        & $apksigner sign --ks $keystorePath --ks-pass "pass:$storePassword" --key-pass "pass:$keyPassword" --ks-key-alias $env:ANDROID_KEY_ALIAS --out $signedApk $ReleaseApk | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to sign Android APK: $ReleaseApk"
+        }
+        Move-Item $signedApk $ReleaseApk -Force
+    }
+    elseif (Test-Path $ReleaseApk) {
+        & jarsigner -keystore $keystorePath -storepass $storePassword -keypass $keyPassword -sigalg SHA256withRSA -digestalg SHA-256 $ReleaseApk $env:ANDROID_KEY_ALIAS | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to sign Android APK: $ReleaseApk"
+        }
+    }
+
+    if ($ReleaseBundle -and (Test-Path $ReleaseBundle)) {
+        & jarsigner -keystore $keystorePath -storepass $storePassword -keypass $keyPassword -sigalg SHA256withRSA -digestalg SHA-256 $ReleaseBundle $env:ANDROID_KEY_ALIAS | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to sign Android bundle: $ReleaseBundle"
+        }
+    }
 }
+
+function Build-Windows {
+    param([string]$RuntimeIdentifier)
+
+    Write-Section "Windows $RuntimeIdentifier"
+    New-Item -ItemType Directory -Path $windowsDistRoot -Force | Out-Null
+
+    $profile = Resolve-WindowsPublishProfile -RuntimeIdentifier $RuntimeIdentifier
+    $publishDir = Join-Path (Join-Path $windowsDistRoot $RuntimeIdentifier) 'publish'
+    $zipPath = Join-Path $windowsDistRoot "NexRemote-$RuntimeIdentifier.zip"
+
+    Invoke-CommandChecked -Message 'dotnet restore (Windows)' -ScriptBlock {
+        & dotnet restore $windowsProject --runtime $RuntimeIdentifier
+    }
+
+    Invoke-CommandChecked -Message 'dotnet build (Windows)' -ScriptBlock {
+        & dotnet build $windowsProject `
+            --configuration $Configuration `
+            --runtime $RuntimeIdentifier `
+            --no-restore `
+            -p:PublishProfile=$profile `
+            -p:PublishTrimmed=false `
+            -p:PublishReadyToRun=false `
+            -p:PublishSingleFile=false
+    }
+
+    Invoke-CommandChecked -Message 'dotnet publish (Windows)' -ScriptBlock {
+        & dotnet publish $windowsProject `
+            --configuration $Configuration `
+            --runtime $RuntimeIdentifier `
+            --self-contained true `
+            --no-restore `
+            -p:PublishProfile=$profile `
+            -p:PublishDir=$publishDir `
+            -p:PublishTrimmed=false `
+            -p:PublishReadyToRun=false `
+            -p:PublishSingleFile=false
+    }
+
+    Sign-WindowsPublish -PublishDir $publishDir
+
+    if (Test-Path $zipPath) {
+        Remove-Item $zipPath -Force
+    }
+    Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipPath -Force
+    Write-Host "Windows package: $zipPath" -ForegroundColor Green
+}
+
+function Find-AndroidArtifact {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern
+    )
+
+    Get-ChildItem (Join-Path (Join-Path (Join-Path $androidProject 'app') 'build') 'outputs') -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like $Pattern } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+}
+
+function Build-Android {
+    Write-Section 'Android'
+    New-Item -ItemType Directory -Path $androidDistRoot -Force | Out-Null
+
+    $java = Get-Command java -ErrorAction SilentlyContinue
+    if (-not $java -and [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+        throw 'Java is required for the Android build. Install JDK 17 or set JAVA_HOME.'
+    }
+
+    $gradleWrapper = if ($IsWindows) { Join-Path $androidProject 'gradlew.bat' } else { Join-Path $androidProject 'gradlew' }
+    if (-not (Test-Path $gradleWrapper)) {
+        throw "Gradle wrapper not found: $gradleWrapper"
+    }
+
+    $gradleTasks = @('assembleDebug', 'assembleRelease')
+    if (-not $NoTests) {
+        $gradleTasks = @('testDebugUnitTest', 'lintDebug') + $gradleTasks
+    }
+    if ($AndroidBundle) {
+        $gradleTasks += 'bundleRelease'
+    }
+
+    Invoke-CommandChecked -Message 'Gradle Android build' -ScriptBlock {
+        Push-Location $androidProject
+        try {
+            & $gradleWrapper @gradleTasks
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    $debugApk = Find-AndroidArtifact -Pattern 'app-debug.apk'
+    if ($debugApk) {
+        Copy-ArtifactIfExists -Source $debugApk.FullName -Destination (Join-Path $androidDistRoot 'NexRemote-android-debug.apk') | Out-Null
+    }
+
+    $releaseApk = Find-AndroidArtifact -Pattern 'app-release-*.apk'
+    if (-not $releaseApk) {
+        $releaseApk = Find-AndroidArtifact -Pattern 'app-release.apk'
+    }
+
+    $releaseBundle = $null
+    if ($AndroidBundle) {
+        $releaseBundle = Find-AndroidArtifact -Pattern 'app-release.aab'
+    }
+
+    $stagedApk = Join-Path $androidDistRoot 'NexRemote-android-release.apk'
+    $stagedBundle = if ($AndroidBundle) { Join-Path $androidDistRoot 'NexRemote-android-release.aab' } else { $null }
+
+    if ($releaseApk) {
+        Copy-ArtifactIfExists -Source $releaseApk.FullName -Destination $stagedApk | Out-Null
+    }
+    if ($releaseBundle) {
+        Copy-ArtifactIfExists -Source $releaseBundle.FullName -Destination $stagedBundle | Out-Null
+    }
+
+    if ((Test-Path $stagedApk) -or ($stagedBundle -and (Test-Path $stagedBundle))) {
+        Sign-AndroidPublish -ReleaseApk $stagedApk -ReleaseBundle $stagedBundle
+    }
+
+    $mapping = Join-Path (Join-Path (Join-Path (Join-Path (Join-Path $androidProject 'app') 'build') 'outputs') 'mapping') 'release'
+    $mapping = Join-Path $mapping 'mapping.txt'
+    if (Test-Path $mapping) {
+        Copy-ArtifactIfExists -Source $mapping -Destination (Join-Path $androidDistRoot 'mapping.txt') | Out-Null
+    }
+
+    Write-Host "Android artifacts: $androidDistRoot" -ForegroundColor Green
+}
+
+Write-Host "`nNexRemote production build`n" -ForegroundColor Cyan
+Write-Host "Root: $root" -ForegroundColor DarkGray
+
+if (-not $SkipWindows) {
+    $runtimeIdentifier = Resolve-WindowsRuntimeIdentifier -Runtime $WindowsRuntime
+    Build-Windows -RuntimeIdentifier $runtimeIdentifier
+}
+
+if (-not $SkipAndroid) {
+    Build-Android
+}
+
+Write-Host "`nBuild complete." -ForegroundColor Green

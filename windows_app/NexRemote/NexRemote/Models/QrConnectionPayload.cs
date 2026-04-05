@@ -21,6 +21,9 @@ public sealed class QrConnectionPayload
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    [JsonPropertyName("cert_fingerprint")]
+    public string CertFingerprint { get; set; } = string.Empty;
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

@@ -13,6 +13,7 @@ public sealed class ServerCapabilitiesFactory : IServerCapabilitiesFactory
     {
         return new CapabilitiesModel
         {
+            Gamepad = gamepadAvailable,
             GamepadAvailable = gamepadAvailable,
             GamepadMode = string.IsNullOrWhiteSpace(gamepadMode) ? "xinput" : gamepadMode
         };

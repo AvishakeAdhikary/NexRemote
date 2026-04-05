@@ -17,8 +17,8 @@ public interface ITrustedDeviceService
     TrustedDeviceRecord? Get(string deviceId);
     Task InitializeAsync(CancellationToken cancellationToken = default);
     Task SaveAsync(CancellationToken cancellationToken = default);
-    void RecordConnection(string deviceId, string deviceName);
-    void Add(string deviceId, string deviceName);
+    void RecordConnection(string deviceId, string deviceName, string publicKey);
+    void Add(string deviceId, string deviceName, string publicKey);
     void Remove(string deviceId);
     void ReplaceAll(IDictionary<string, TrustedDeviceRecord> devices);
 }
@@ -76,13 +76,17 @@ public sealed class TrustedDeviceService : ITrustedDeviceService
         }
     }
 
-    public void RecordConnection(string deviceId, string deviceName)
+    public void RecordConnection(string deviceId, string deviceName, string publicKey)
     {
         var now = DateTimeOffset.UtcNow;
         if (_devices.TryGetValue(deviceId, out var existing))
         {
             existing.Name = deviceName;
             existing.LastConnected = now;
+            if (!string.IsNullOrWhiteSpace(publicKey))
+            {
+                existing.PublicKey = publicKey;
+            }
         }
         else
         {
@@ -90,19 +94,21 @@ public sealed class TrustedDeviceService : ITrustedDeviceService
             {
                 Name = deviceName,
                 FirstConnected = now,
-                LastConnected = now
+                LastConnected = now,
+                PublicKey = publicKey
             };
         }
     }
 
-    public void Add(string deviceId, string deviceName)
+    public void Add(string deviceId, string deviceName, string publicKey)
     {
         var now = DateTimeOffset.UtcNow;
         _devices[deviceId] = new TrustedDeviceRecord
         {
             Name = deviceName,
             FirstConnected = now,
-            LastConnected = now
+            LastConnected = now,
+            PublicKey = publicKey
         };
     }
 
@@ -139,7 +145,8 @@ public sealed class TrustedDeviceService : ITrustedDeviceService
             {
                 Name = element.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? string.Empty : string.Empty,
                 FirstConnected = ReadTimestamp(element, "first_connected"),
-                LastConnected = ReadTimestamp(element, "last_connected")
+                LastConnected = ReadTimestamp(element, "last_connected"),
+                PublicKey = element.TryGetProperty("public_key", out var publicKeyProp) ? publicKeyProp.GetString() ?? string.Empty : string.Empty
             };
             _devices[pair.Name] = record;
         }

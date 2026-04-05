@@ -21,6 +21,9 @@ public sealed class AuthRequestMessage
     [JsonPropertyName("platform")]
     public string? Platform { get; set; }
 
+    [JsonPropertyName("client_public_key")]
+    public string? ClientPublicKey { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

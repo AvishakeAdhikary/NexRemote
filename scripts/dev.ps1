@@ -1,89 +1,172 @@
-# NexRemote Development Script
-# Starts both the Windows Python app and the Flutter mobile app simultaneously.
-# Usage: .\scripts\dev.ps1
+# NexRemote development script
+# Starts the Windows host and, when available, installs/launches the Android debug build.
 
-$ErrorActionPreference = "Stop"
+param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Debug',
 
-# ── UTF-8 everywhere ──
+    [switch]$WindowsOnly,
+    [switch]$AndroidOnly,
+    [switch]$SkipAndroidInstall,
+    [switch]$SkipAndroidLaunch
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
 
-$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$windowsApp = Join-Path $root "windows_app\src"
-$flutterApp = Join-Path $root "nexremote"
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$windowsProject = Join-Path (Join-Path (Join-Path (Join-Path $root 'windows_app') 'NexRemote') 'NexRemote') 'NexRemote.csproj'
+$androidProject = Join-Path (Join-Path $root 'client') 'NexRemote'
 
-Write-Host "`n=== NexRemote Development Environment ===" -ForegroundColor Cyan
-Write-Host "Root:        $root" -ForegroundColor DarkGray
-Write-Host "Windows App: $windowsApp" -ForegroundColor DarkGray
-Write-Host "Flutter App: $flutterApp" -ForegroundColor DarkGray
-Write-Host ""
-
-# ── Check prerequisites ──
-if (-not (Test-Path (Join-Path $windowsApp ".venv"))) {
-    Write-Host "[!] Python venv not found. Running 'uv sync'..." -ForegroundColor Yellow
-    Push-Location $windowsApp
-    uv sync
-    Pop-Location
+function Write-Section {
+    param([string]$Text)
+    Write-Host "`n==> $Text" -ForegroundColor Cyan
 }
 
-$flutterExe = Get-Command flutter -ErrorAction SilentlyContinue
-if (-not $flutterExe) {
-    Write-Host "[ERROR] Flutter not found in PATH. Please install Flutter first." -ForegroundColor Red
-    exit 1
-}
+function Invoke-CommandChecked {
+    param(
+        [scriptblock]$ScriptBlock,
+        [string]$Message
+    )
 
-# ── Start Windows Python app ──
-Write-Host "[1/2] Starting Windows app (Python)..." -ForegroundColor Green
-$pythonJob = Start-Job -ScriptBlock {
-    param($dir)
-    # Set UTF-8 inside the job as well
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-    Set-Location $dir
-    & ".venv\Scripts\python.exe" main.py
-} -ArgumentList $windowsApp
-
-# ── Start Flutter app ──
-Write-Host "[2/2] Starting Flutter app..." -ForegroundColor Green
-$flutterJob = Start-Job -ScriptBlock {
-    param($dir)
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-    Set-Location $dir
-    flutter run
-} -ArgumentList $flutterApp
-
-Write-Host "`n=== Both apps started ===" -ForegroundColor Green
-Write-Host "Press Ctrl+C to stop both apps.`n" -ForegroundColor DarkGray
-
-# ── Wait and stream output ──
-try {
-    while ($true) {
-        # Stream output from both jobs
-        Receive-Job $pythonJob -ErrorAction SilentlyContinue | Write-Host
-        Receive-Job $flutterJob -ErrorAction SilentlyContinue | Write-Host
-
-        # Check if any job failed
-        if ($pythonJob.State -eq "Failed") {
-            Write-Host "[ERROR] Python app crashed:" -ForegroundColor Red
-            Receive-Job $pythonJob
-            break
-        }
-        if ($flutterJob.State -eq "Failed") {
-            Write-Host "[ERROR] Flutter app crashed:" -ForegroundColor Red
-            Receive-Job $flutterJob
-            break
-        }
-
-        Start-Sleep -Milliseconds 500
+    & $ScriptBlock
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Message failed with exit code $LASTEXITCODE"
     }
 }
-finally {
-    Write-Host "`n=== Shutting down ===" -ForegroundColor Yellow
-    Stop-Job $pythonJob -ErrorAction SilentlyContinue
-    Stop-Job $flutterJob -ErrorAction SilentlyContinue
-    Remove-Job $pythonJob -Force -ErrorAction SilentlyContinue
-    Remove-Job $flutterJob -Force -ErrorAction SilentlyContinue
-    Write-Host "Done." -ForegroundColor Green
+
+function Resolve-AdbCommand {
+    $adb = Get-Command adb -ErrorAction SilentlyContinue
+    if ($adb) {
+        return $adb.Source
+    }
+
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $roots += $env:ANDROID_SDK_ROOT }
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) { $roots += $env:ANDROID_HOME }
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { $roots += (Join-Path (Join-Path $env:LOCALAPPDATA 'Android') 'Sdk') }
+    $roots += 'C:\Android\Sdk'
+
+    foreach ($rootPath in $roots) {
+        $candidate = Join-Path $rootPath 'platform-tools\adb.exe'
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-ConnectedAdbDevice {
+    param([string]$AdbPath)
+
+    $lines = & $AdbPath devices | Select-Object -Skip 1
+    $devices = foreach ($line in $lines) {
+        if ($line -match '^(?<serial>\S+)\s+device(?:\s|$)') {
+            [pscustomobject]@{
+                Serial = $Matches.serial
+                Line   = $line.Trim()
+            }
+        }
+    }
+
+    return $devices | Select-Object -First 1
+}
+
+function Start-WindowsHost {
+    Write-Section 'Windows host'
+    Invoke-CommandChecked -Message 'dotnet build (Windows dev)' -ScriptBlock {
+        & dotnet build $windowsProject --configuration $Configuration
+    }
+
+    $process = Start-Process -FilePath 'dotnet' -ArgumentList @(
+        'run',
+        '--project', $windowsProject,
+        '--configuration', $Configuration,
+        '--no-build'
+    ) -WorkingDirectory (Split-Path -Parent $windowsProject) -PassThru
+
+    Start-Sleep -Seconds 2
+    if ($process.HasExited) {
+        throw 'The Windows host exited immediately after launch. Check the console output from dotnet run.'
+    }
+
+    Write-Host "Windows host started. PID: $($process.Id)" -ForegroundColor Green
+}
+
+function Start-AndroidDebug {
+    Write-Section 'Android debug'
+
+    $java = Get-Command java -ErrorAction SilentlyContinue
+    if (-not $java -and [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+        Write-Warning 'Java was not found. Android debug build/install is being skipped.'
+        return
+    }
+
+    $gradleWrapper = if ($IsWindows) { Join-Path $androidProject 'gradlew.bat' } else { Join-Path $androidProject 'gradlew' }
+    if (-not (Test-Path $gradleWrapper)) {
+        throw "Gradle wrapper not found: $gradleWrapper"
+    }
+
+    Invoke-CommandChecked -Message 'Gradle assembleDebug' -ScriptBlock {
+        Push-Location $androidProject
+        try {
+            & $gradleWrapper assembleDebug
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    $debugApk = Join-Path (Join-Path (Join-Path (Join-Path $androidProject 'app') 'build') 'outputs') 'apk'
+    $debugApk = Join-Path (Join-Path $debugApk 'debug') 'app-debug.apk'
+    if (-not (Test-Path $debugApk)) {
+        Write-Warning "Debug APK not found at $debugApk"
+        return
+    }
+
+    $adb = Resolve-AdbCommand
+    if (-not $adb) {
+        Write-Host "ADB was not found. Debug APK is ready at $debugApk" -ForegroundColor Yellow
+        return
+    }
+
+    $device = Get-ConnectedAdbDevice -AdbPath $adb
+    if (-not $device) {
+        Write-Host "No connected Android device or emulator was found. Debug APK is ready at $debugApk" -ForegroundColor Yellow
+        return
+    }
+
+    if (-not $SkipAndroidInstall) {
+        Write-Host "Installing debug APK on $($device.Serial)..." -ForegroundColor DarkGray
+        Invoke-CommandChecked -Message 'adb install (Android debug)' -ScriptBlock {
+            & $adb @('-s', $device.Serial, 'install', '-r', $debugApk)
+        }
+    }
+
+    if (-not $SkipAndroidLaunch) {
+        $packageName = 'com.neuralnexusstudios.nexremote.debug'
+        Write-Host "Launching $packageName on $($device.Serial)..." -ForegroundColor DarkGray
+        Invoke-CommandChecked -Message 'adb launch (Android debug)' -ScriptBlock {
+            & $adb @('-s', $device.Serial, 'shell', 'monkey', '-p', $packageName, '-c', 'android.intent.category.LAUNCHER', '1')
+        }
+    }
+
+    Write-Host "Android debug build complete. APK: $debugApk" -ForegroundColor Green
+}
+
+Write-Host "`nNexRemote development environment" -ForegroundColor Cyan
+Write-Host "Root: $root" -ForegroundColor DarkGray
+Write-Host "Windows project: $windowsProject" -ForegroundColor DarkGray
+Write-Host "Android project: $androidProject" -ForegroundColor DarkGray
+
+if (-not $AndroidOnly) {
+    Start-WindowsHost
+}
+
+if (-not $WindowsOnly) {
+    Start-AndroidDebug
 }

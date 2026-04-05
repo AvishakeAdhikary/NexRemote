@@ -11,6 +11,10 @@ namespace NexRemote.Services;
 
 internal sealed class TaskManagerService
 {
+    private readonly object _sampleGate = new();
+    private readonly Dictionary<int, ProcessSample> _processSamples = new();
+    private CpuSample? _systemCpuSample;
+
     public Task<object> HandleRequestAsync(JsonElement data)
     {
         try
@@ -45,7 +49,7 @@ internal sealed class TaskManagerService
                     {
                         pid = process.Id,
                         name = SafeProcessName(process),
-                        cpu = 0.0,
+                        cpu = Math.Round(GetProcessCpuUsage(process), 1),
                         memory = process.WorkingSet64
                     });
                 }
@@ -140,7 +144,7 @@ internal sealed class TaskManagerService
             {
                 type = "task_manager",
                 action = "system_info",
-                cpu_usage = 0.0,
+                cpu_usage = Math.Round(GetCpuUsage(), 1),
                 memory_usage = Math.Round((double)memory.MemoryLoad, 1),
                 disk_usage = Math.Round(diskPercent, 1),
                 memory_total = memory.TotalPhys,
@@ -192,9 +196,75 @@ internal sealed class TaskManagerService
         return fallback;
     }
 
+    private double GetProcessCpuUsage(Process process)
+    {
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var totalProcessorTime = process.TotalProcessorTime;
+
+            lock (_sampleGate)
+            {
+                if (_processSamples.TryGetValue(process.Id, out var previous))
+                {
+                    var elapsedMs = Math.Max(1, (now - previous.Timestamp).TotalMilliseconds);
+                    var cpuDeltaMs = Math.Max(0, (totalProcessorTime - previous.TotalProcessorTime).TotalMilliseconds);
+                    _processSamples[process.Id] = new ProcessSample(totalProcessorTime, now);
+                    return Math.Clamp(cpuDeltaMs / (elapsedMs * Environment.ProcessorCount) * 100.0, 0.0, 100.0);
+                }
+
+                _processSamples[process.Id] = new ProcessSample(totalProcessorTime, now);
+                return 0.0;
+            }
+        }
+        catch
+        {
+            return 0.0;
+        }
+    }
+
+    private double GetCpuUsage()
+    {
+        if (!GetSystemTimes(out var idleTime, out var kernelTime, out var userTime))
+        {
+            return 0.0;
+        }
+
+        var now = new CpuSample(ToUInt64(idleTime), ToUInt64(kernelTime), ToUInt64(userTime));
+        lock (_sampleGate)
+        {
+            if (_systemCpuSample is null)
+            {
+                _systemCpuSample = now;
+                return 0.0;
+            }
+
+            var previous = _systemCpuSample.Value;
+            _systemCpuSample = now;
+
+            var idle = now.Idle - previous.Idle;
+            var kernel = now.Kernel - previous.Kernel;
+            var user = now.User - previous.User;
+            var total = kernel + user;
+            if (total <= 0)
+            {
+                return 0.0;
+            }
+
+            return Math.Clamp((total - idle) * 100.0 / total, 0.0, 100.0);
+        }
+    }
+
+    private static ulong ToUInt64(FILETIME time)
+        => ((ulong)time.dwHighDateTime << 32) | time.dwLowDateTime;
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemTimes(out FILETIME idleTime, out FILETIME kernelTime, out FILETIME userTime);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     private struct MemoryStatusEx
@@ -214,4 +284,15 @@ internal sealed class TaskManagerService
             Length = (uint)Marshal.SizeOf<MemoryStatusEx>();
         }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILETIME
+    {
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
+    }
+
+    private readonly record struct ProcessSample(TimeSpan TotalProcessorTime, DateTimeOffset Timestamp);
+
+    private readonly record struct CpuSample(ulong Idle, ulong Kernel, ulong User);
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -65,12 +66,19 @@ fun GamepadScreen(
     val layouts by appContainer.gamepadRepository.layouts.collectAsState()
     val activeLayout by appContainer.gamepadRepository.activeLayout.collectAsState()
     val settings by appContainer.preferences.settings.collectAsState()
+    val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     val context = LocalContext.current
     val hapticsEnabled = settings.appHapticsEnabled && activeLayout.hapticFeedback
     val performHaptic = rememberAppHaptics(hapticsEnabled)
     var showLayoutPicker by remember { mutableStateOf(false) }
     var editingLayout by remember { mutableStateOf<GamepadLayoutConfig?>(null) }
     var renameLayout by remember { mutableStateOf<GamepadLayoutConfig?>(null) }
+
+    val gamepadAvailable = sessionState.connected &&
+        sessionState.capabilities?.gamepadAvailable != false &&
+        sessionState.featureStatus["gamepad"]?.available != false
+    val gamepadReason = sessionState.featureStatus["gamepad"]?.reason
+        ?: if (sessionState.capabilities?.gamepad == false) "Gamepad input is not supported by the PC server." else null
 
     DisposableEffect(activeLayout.id, activeLayout.gyroEnabled, activeLayout.accelEnabled, settings.gyroSensitivity) {
         if (!activeLayout.gyroEnabled && !activeLayout.accelEnabled) return@DisposableEffect onDispose { }
@@ -123,40 +131,78 @@ fun GamepadScreen(
             )
         },
     ) { innerPadding ->
-        BoxWithConstraints(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(12.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp)),
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            activeLayout.elements.forEach { element ->
-                val left = maxWidth * element.x
-                val top = maxHeight * element.y
-                Box(modifier = Modifier.offset(left, top)) {
-                    when (element.type) {
-                        "button" -> GamepadButton(element) {
-                            if (it) performHaptic(AppHapticStyle.Light)
-                            appContainer.gamepadRepository.sendButton(element.action ?: element.label.orEmpty(), it)
-                        }
-                        "trigger" -> GamepadButton(element) {
-                            if (it) performHaptic(AppHapticStyle.Light)
-                            appContainer.gamepadRepository.sendTrigger(element.trigger ?: "LT", if (it) 1f else 0f)
-                        }
-                        "macro" -> MacroButton(element) {
-                            performHaptic(AppHapticStyle.Heavy)
-                            appContainer.gamepadRepository.fireMacro(element.macro)
-                        }
-                        "joystick" -> JoystickElement(element) { x, y ->
-                            appContainer.gamepadRepository.sendJoystick(element.stick ?: "left", x, y)
-                        }
-                        "dpad" -> DpadElement(element) { direction, pressed ->
-                            if (pressed) performHaptic(AppHapticStyle.Light)
-                            appContainer.gamepadRepository.sendDpad(direction, pressed)
-                        }
-                        "face_buttons" -> FaceButtonsElement(element) { button, pressed ->
-                            if (pressed) performHaptic(AppHapticStyle.Light)
-                            appContainer.gamepadRepository.sendButton(button, pressed)
+            if (!gamepadAvailable) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("Gamepad input is not ready", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            gamepadReason ?: "The PC server has not enabled gamepad support yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp)),
+            ) {
+                activeLayout.elements.forEach { element ->
+                    val left = maxWidth * element.x
+                    val top = maxHeight * element.y
+                    Box(modifier = Modifier.offset(left, top)) {
+                        when (element.type) {
+                            "button" -> GamepadButton(element) {
+                                if (gamepadAvailable) {
+                                    if (it) performHaptic(AppHapticStyle.Light)
+                                    appContainer.gamepadRepository.sendButton(element.action ?: element.label.orEmpty(), it)
+                                }
+                            }
+                            "trigger" -> GamepadButton(element) {
+                                if (gamepadAvailable) {
+                                    if (it) performHaptic(AppHapticStyle.Light)
+                                    appContainer.gamepadRepository.sendTrigger(element.trigger ?: "LT", if (it) 1f else 0f)
+                                }
+                            }
+                            "macro" -> MacroButton(element) {
+                                if (gamepadAvailable) {
+                                    performHaptic(AppHapticStyle.Heavy)
+                                    appContainer.gamepadRepository.fireMacro(element.macro)
+                                }
+                            }
+                            "joystick" -> JoystickElement(element) { x, y ->
+                                if (gamepadAvailable) {
+                                    appContainer.gamepadRepository.sendJoystick(element.stick ?: "left", x, y)
+                                }
+                            }
+                            "dpad" -> DpadElement(element) { direction, pressed ->
+                                if (gamepadAvailable) {
+                                    if (pressed) performHaptic(AppHapticStyle.Light)
+                                    appContainer.gamepadRepository.sendDpad(direction, pressed)
+                                }
+                            }
+                            "face_buttons" -> FaceButtonsElement(element) { button, pressed ->
+                                if (gamepadAvailable) {
+                                    if (pressed) performHaptic(AppHapticStyle.Light)
+                                    appContainer.gamepadRepository.sendButton(button, pressed)
+                                }
+                            }
                         }
                     }
                 }

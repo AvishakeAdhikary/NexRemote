@@ -17,6 +17,37 @@ data class ServerInfo(
     @SerialName("port_insecure") val portInsecure: Int,
     val id: String = "",
     val version: String = "1.0.0",
+    @SerialName("cert_fingerprint") val certificateFingerprint: String? = null,
+)
+
+@Serializable
+data class FeatureStatus(
+    val supported: Boolean? = null,
+    val available: Boolean? = null,
+    val reason: String? = null,
+    @SerialName("action_required") val actionRequired: String? = null,
+)
+
+@Serializable
+data class ServerCapabilities(
+    val keyboard: Boolean = true,
+    val mouse: Boolean = true,
+    val gamepad: Boolean = false,
+    @SerialName("gamepad_available") val gamepadAvailable: Boolean = false,
+    @SerialName("gamepad_mode") val gamepadMode: String = "xinput",
+    @SerialName("gamepad_modes") val gamepadModes: List<String> = emptyList(),
+    @SerialName("screen_streaming") val screenStreaming: Boolean = true,
+    @SerialName("camera_streaming") val cameraStreaming: Boolean = true,
+    @SerialName("file_transfer") val fileTransfer: Boolean = true,
+    val clipboard: Boolean = false,
+    @SerialName("multi_display") val multiDisplay: Boolean = true,
+)
+
+data class ServerSessionState(
+    val serverName: String = "",
+    val connected: Boolean = false,
+    val capabilities: ServerCapabilities? = null,
+    val featureStatus: Map<String, FeatureStatus> = emptyMap(),
 )
 
 data class AppSettings(
@@ -81,6 +112,8 @@ data class DisplayInfo(
     val name: String,
     val width: Int,
     val height: Int,
+    val left: Int = 0,
+    val top: Int = 0,
     val isPrimary: Boolean = false,
 )
 
@@ -100,7 +133,7 @@ data class FileItem(
 data class FileProperties(
     val name: String,
     val path: String,
-    val type: String,
+    val kind: String,
     val size: String,
     val modified: String,
     val created: String,

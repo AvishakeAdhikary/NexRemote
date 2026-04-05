@@ -35,9 +35,18 @@ public static class PathHelper
         return path;
     }
 
+    public static string GetOperationalLogPath() => Path.Combine(GetLogsDirectory(), "nexremote.log");
+
     public static string GetCertificatesDirectory()
     {
         var path = Path.Combine(GetAppDataRoot(), "certs");
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    public static string GetToolsDirectory()
+    {
+        var path = Path.Combine(GetAppDataRoot(), "tools");
         Directory.CreateDirectory(path);
         return path;
     }

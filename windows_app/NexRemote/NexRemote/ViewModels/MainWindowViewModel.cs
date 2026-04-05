@@ -13,7 +13,7 @@ namespace NexRemote.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject
 {
     private readonly IAppSettingsService _settingsService;
-    private readonly IRemoteServer _remoteServer;
+    private readonly IServerCoordinator _serverCoordinator;
     private readonly ILocalNetworkService _localNetworkService;
     private readonly IQrCodeService _qrCodeService;
     private readonly ILegalDocumentService _legalDocumentService;
@@ -42,10 +42,11 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _qrPayloadPreview = string.Empty;
     private string _deviceIdPreview = string.Empty;
     private bool _gamepadDriverInstalled;
+    private bool _gamepadTransportReady;
 
     public MainWindowViewModel(
         IAppSettingsService settingsService,
-        IRemoteServer remoteServer,
+        IServerCoordinator serverCoordinator,
         ILocalNetworkService localNetworkService,
         IQrCodeService qrCodeService,
         ILegalDocumentService legalDocumentService,
@@ -53,7 +54,7 @@ public sealed class MainWindowViewModel : ObservableObject
         IGamepadDriverService gamepadDriverService)
     {
         _settingsService = settingsService;
-        _remoteServer = remoteServer;
+        _serverCoordinator = serverCoordinator;
         _localNetworkService = localNetworkService;
         _qrCodeService = qrCodeService;
         _legalDocumentService = legalDocumentService;
@@ -87,14 +88,16 @@ public sealed class MainWindowViewModel : ObservableObject
     public string GamepadStatusText => _gamepadDriverInstalled ? "ViGEmBus detected" : "ViGEmBus not detected";
 
     public string GamepadSupportText => _gamepadDriverInstalled
-        ? "ViGEmBus is installed. Native gamepad compatibility can be advertised to the client."
+        ? _gamepadTransportReady
+            ? "ViGEmBus and the NexRemote companion are installed. Native gamepad transport is ready."
+            : "ViGEmBus is installed. Add the NexRemote gamepad companion to activate native controller transport."
         : "Install ViGEmBus to enable native virtual gamepad compatibility.";
 
-    public Visibility GamepadBannerVisibility => _gamepadDriverInstalled ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility GamepadBannerVisibility => _gamepadTransportReady ? Visibility.Collapsed : Visibility.Visible;
 
     public string ServerButtonText => IsServerRunning ? "Stop Server" : "Start Server";
 
-    public bool IsServerRunning => _remoteServer.IsRunning;
+    public bool IsServerRunning => _serverCoordinator.IsRunning;
 
     public string ServerStatusText
     {
@@ -276,19 +279,27 @@ public sealed class MainWindowViewModel : ObservableObject
             _ => 0
         };
 
-        TermsOfServiceText = await _legalDocumentService.LoadTermsOfServiceAsync();
-        TermsAndConditionsText = await _legalDocumentService.LoadTermsAndConditionsAsync();
-        PrivacyPolicyText = await _legalDocumentService.LoadPrivacyPolicyAsync();
-        _gamepadDriverInstalled = await _gamepadDriverService.IsViGEmBusInstalledAsync();
-        _remoteServer.RefreshCapabilities();
+        var termsTask = _legalDocumentService.LoadTermsOfServiceAsync();
+        var conditionsTask = _legalDocumentService.LoadTermsAndConditionsAsync();
+        var privacyTask = _legalDocumentService.LoadPrivacyPolicyAsync();
+        var gamepadTask = _gamepadDriverService.IsViGEmBusInstalledAsync();
+        var gamepadTransportTask = _gamepadDriverService.IsNativeTransportReadyAsync();
+
+        await Task.WhenAll(termsTask, conditionsTask, privacyTask, gamepadTask, gamepadTransportTask);
+        TermsOfServiceText = termsTask.Result;
+        TermsAndConditionsText = conditionsTask.Result;
+        PrivacyPolicyText = privacyTask.Result;
+        _gamepadDriverInstalled = gamepadTask.Result;
+        _gamepadTransportReady = gamepadTransportTask.Result;
+        _serverCoordinator.RefreshCapabilities();
 
         var lanIp = _localNetworkService.GetLanIpAddress();
         LanIpText = $"LAN IP: {lanIp}";
         DeviceIdPreview = $"Device ID: {settings.DeviceId}";
         ServerPortsText = $"Ports: {settings.ServerPort} secure / {settings.ServerPortInsecure} fallback / {settings.DiscoveryPort} discovery";
-        ServerStatusText = _remoteServer.IsRunning ? "Server running" : "Server stopped";
+        ServerStatusText = _serverCoordinator.IsRunning ? "Server running" : "Server stopped";
 
-        var qrPayload = _remoteServer.CreateQrPayload(lanIp);
+        var qrPayload = _serverCoordinator.CreateQrPayload(lanIp);
         var qrJson = JsonSerializer.Serialize(qrPayload, ProtocolJson.SharedOptions);
         QrPayloadPreview = qrJson;
         QrCodeImage = await _qrCodeService.CreateAsync(qrJson);
@@ -304,9 +315,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public async Task ToggleServerAsync()
     {
-        if (_remoteServer.IsRunning)
+        if (_serverCoordinator.IsRunning)
         {
-            await _remoteServer.StopAsync();
+            await _serverCoordinator.StopAsync();
         }
         else
         {
@@ -315,8 +326,8 @@ public sealed class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            _remoteServer.RefreshCapabilities();
-            await _remoteServer.StartAsync();
+            _serverCoordinator.RefreshCapabilities();
+            await _serverCoordinator.StartAsync();
         }
 
         await InitializeAsync();
@@ -374,7 +385,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public async Task DisconnectClientAsync(string clientId)
     {
-        await _remoteServer.DisconnectClientAsync(clientId);
+        await _serverCoordinator.DisconnectClientAsync(clientId);
     }
 
     public void RefreshTrustedDevices()

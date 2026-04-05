@@ -16,6 +16,9 @@ public sealed class TrustedDeviceRecord
     [JsonPropertyName("last_connected")]
     public DateTimeOffset LastConnected { get; set; } = DateTimeOffset.UtcNow;
 
+    [JsonPropertyName("public_key")]
+    public string PublicKey { get; set; } = string.Empty;
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
