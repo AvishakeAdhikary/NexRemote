@@ -84,7 +84,15 @@ function Invoke-CommandChecked {
         [string]$Message
     )
 
-    & $ScriptBlock
+    $global:LASTEXITCODE = 0
+
+    try {
+        & $ScriptBlock
+    }
+    catch {
+        throw "$Message failed: $_"
+    }
+
     if ($LASTEXITCODE -ne 0) {
         throw "$Message failed with exit code $LASTEXITCODE"
     }
