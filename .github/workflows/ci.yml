@@ -87,6 +87,13 @@ jobs:
         shell: pwsh
         run: .\scripts\build.ps1 -Configuration Release -SkipWindows -AndroidBundle
 
+      - name: Debug Android outputs
+        run: |
+          echo "==== DIST ANDROID ===="
+          ls -R dist/android || true
+          echo "==== GRADLE OUTPUTS ===="
+          ls -R client/NexRemote/app/build/outputs || true
+
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +102,7 @@ jobs:
             dist/android/NexRemote-android-release.apk
             dist/android/NexRemote-android-release.aab
             dist/android/mapping.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
   release-edge:

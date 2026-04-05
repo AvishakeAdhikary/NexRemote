@@ -305,10 +305,7 @@ function Build-Android {
         Copy-ArtifactIfExists -Source $debugApk.FullName -Destination (Join-Path $androidDistRoot 'NexRemote-android-debug.apk') | Out-Null
     }
 
-    $releaseApk = Find-AndroidArtifact -Pattern 'app-release-*.apk'
-    if (-not $releaseApk) {
-        $releaseApk = Find-AndroidArtifact -Pattern 'app-release.apk'
-    }
+    $releaseApk = Find-AndroidArtifact -Pattern 'app-release*.apk'
 
     $releaseBundle = $null
     if ($AndroidBundle) {
