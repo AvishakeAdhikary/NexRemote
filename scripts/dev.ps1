@@ -15,7 +15,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-chcp 65001 | Out-Null
+if ($IsWindows) {
+    chcp 65001 | Out-Null
+}
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $windowsProject = Join-Path (Join-Path (Join-Path (Join-Path $root 'windows_app') 'NexRemote') 'NexRemote') 'NexRemote.csproj'
