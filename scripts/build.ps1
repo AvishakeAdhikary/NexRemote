@@ -293,7 +293,11 @@ function Build-Android {
     Invoke-CommandChecked -Message 'Gradle Android build' -ScriptBlock {
         Push-Location $androidProject
         try {
-            & $gradleWrapper @gradleTasks
+            if ($IsWindows) {
+                & $gradleWrapper @gradleTasks
+            } else {
+                & bash $gradleWrapper @gradleTasks
+            }
         }
         finally {
             Pop-Location

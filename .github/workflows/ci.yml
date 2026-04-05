@@ -83,6 +83,9 @@ jobs:
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x client/NexRemote/gradlew
+      
       - name: Build Android package
         shell: pwsh
         run: .\scripts\build.ps1 -Configuration Release -SkipWindows -AndroidBundle
