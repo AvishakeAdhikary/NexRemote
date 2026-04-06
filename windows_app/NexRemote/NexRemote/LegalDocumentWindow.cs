@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using NexRemote.Helpers;
 using NexRemote.Models;
 using NexRemote.Services;
 
@@ -42,14 +43,7 @@ public sealed class LegalDocumentWindow : Window
         var viewer = new ScrollViewer
         {
             Margin = new Thickness(24, 0, 24, 24),
-            Content = new TextBox
-            {
-                Text = body,
-                AcceptsReturn = true,
-                IsReadOnly = true,
-                TextWrapping = TextWrapping.Wrap,
-                MinHeight = 500
-            }
+            Content = MarkdownRenderer.Build(body)
         };
         Grid.SetRow(viewer, 1);
         root.Children.Add(viewer);

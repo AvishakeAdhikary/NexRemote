@@ -2,6 +2,7 @@ package com.neuralnexusstudios.nexremote.core.feature
 
 import com.neuralnexusstudios.nexremote.core.model.FileItem
 import com.neuralnexusstudios.nexremote.core.model.FileProperties
+import com.neuralnexusstudios.nexremote.core.model.DriveInfo
 import com.neuralnexusstudios.nexremote.core.network.NexRemoteConnectionRepository
 import com.neuralnexusstudios.nexremote.core.network.bool
 import com.neuralnexusstudios.nexremote.core.network.string
@@ -18,6 +19,7 @@ import kotlinx.serialization.json.longOrNull
 
 sealed interface FileExplorerEvent {
     data class Listing(val files: List<FileItem>) : FileExplorerEvent
+    data class DriveListing(val drives: List<DriveInfo>) : FileExplorerEvent
     data class FileContent(val path: String, val name: String, val content: String) : FileExplorerEvent
     data class Properties(val properties: FileProperties) : FileExplorerEvent
     data class Success(val message: String) : FileExplorerEvent
@@ -34,6 +36,20 @@ class FileExplorerRepository(private val connectionRepository: NexRemoteConnecti
             connectionRepository.messages.collect { payload ->
                 if (payload.string("type") == "file_explorer") {
                     when (payload.string("action")) {
+                        "drive_list" -> {
+                            val drives = payload["drives"]?.jsonArray?.map { item ->
+                                item.jsonObject.let {
+                                    DriveInfo(
+                                        name = it.string("name") ?: "Drive",
+                                        path = it.string("path") ?: "",
+                                        kind = it.string("kind") ?: "unknown",
+                                        isReady = it.bool("is_ready") ?: false,
+                                        label = it.string("label"),
+                                    )
+                                }
+                            }.orEmpty()
+                            _events.tryEmit(FileExplorerEvent.DriveListing(drives))
+                        }
                         "list", "search" -> {
                             val files = payload["files"]?.jsonArray?.map { item ->
                                 item.jsonObject.let {
@@ -77,6 +93,7 @@ class FileExplorerRepository(private val connectionRepository: NexRemoteConnecti
         }
     }
 
+    fun requestDrives() = connectionRepository.sendMessage(mapOf("type" to "file_explorer", "action" to "drive_list"))
     fun requestList(path: String) = connectionRepository.sendMessage(mapOf("type" to "file_explorer", "action" to "list", "path" to path))
     fun search(path: String, query: String) = connectionRepository.sendMessage(mapOf("type" to "file_explorer", "action" to "search", "path" to path, "query" to query))
     fun openFile(path: String) = connectionRepository.sendMessage(mapOf("type" to "file_explorer", "action" to "open", "path" to path))

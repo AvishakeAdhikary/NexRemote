@@ -23,6 +23,7 @@ public static class AppBootstrapper
                 services.AddSingleton<ICertificateService, CertificateService>();
                 services.AddSingleton<IConnectionApprovalService, ConnectionApprovalService>();
                 services.AddSingleton<IGamepadDriverService, GamepadDriverService>();
+                services.AddSingleton<IGamepadTransportService, GamepadTransportService>();
                 services.AddSingleton<IAdbBridgeService, AdbBridgeService>();
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IDiscoveryModelFactory, DiscoveryModelFactory>();

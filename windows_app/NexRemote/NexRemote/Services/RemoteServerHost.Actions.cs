@@ -308,7 +308,7 @@ public sealed partial class RemoteServerHost
 
                     var payload = BuildBinaryFrame(ProtocolConstants.CameraFrameHeader, (byte)(cameraIndex & 0xFF), frame);
                     await session.TrySendBinaryAsync(payload, loopCts.Token).ConfigureAwait(false);
-                    await Task.Delay(250, loopCts.Token).ConfigureAwait(false);
+                    await Task.Delay(100, loopCts.Token).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)

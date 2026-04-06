@@ -6,8 +6,10 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
+using Windows.Graphics.Imaging;
 using Windows.Media.Capture;
 using Windows.Media.MediaProperties;
+using Windows.Media;
 using Windows.Storage.Streams;
 
 namespace NexRemote.Services;
@@ -94,8 +96,23 @@ internal sealed class CameraCaptureService
         await session.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var frame = new VideoFrame(BitmapPixelFormat.Bgra8, 640, 360);
+            using var previewFrame = await session.Capture.GetPreviewFrameAsync(frame).AsTask(cancellationToken).ConfigureAwait(false);
+            var softwareBitmap = previewFrame.SoftwareBitmap;
+            if (softwareBitmap is null)
+            {
+                return Array.Empty<byte>();
+            }
+
+            using var converted = SoftwareBitmap.Convert(
+                softwareBitmap,
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied);
             using var stream = new InMemoryRandomAccessStream();
-            await session.Capture.CapturePhotoToStreamAsync(ImageEncodingProperties.CreateJpeg(), stream).AsTask(cancellationToken).ConfigureAwait(false);
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, stream).AsTask(cancellationToken).ConfigureAwait(false);
+            encoder.SetSoftwareBitmap(converted);
+            encoder.IsThumbnailGenerated = false;
+            await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
             stream.Seek(0);
             var size = checked((int)stream.Size);
             var bytes = new byte[size];
@@ -149,8 +166,12 @@ internal sealed class CameraCaptureService
             await capture.InitializeAsync(new MediaCaptureInitializationSettings
             {
                 VideoDeviceId = devices[cameraIndex].Id,
-                StreamingCaptureMode = StreamingCaptureMode.Video
+                StreamingCaptureMode = StreamingCaptureMode.Video,
+                MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+                SharingMode = MediaCaptureSharingMode.SharedReadOnly
             }).AsTask(cancellationToken).ConfigureAwait(false);
+            await ApplyPreferredPreviewFormatAsync(capture, cancellationToken).ConfigureAwait(false);
+            await capture.StartPreviewAsync().AsTask(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -168,6 +189,33 @@ internal sealed class CameraCaptureService
         return _sessions.TryGetValue(cameraIndex, out var raceWinner) ? raceWinner : null;
     }
 
+    private static async Task ApplyPreferredPreviewFormatAsync(MediaCapture capture, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var properties = capture.VideoDeviceController.GetAvailableMediaStreamProperties(MediaStreamType.VideoPreview);
+
+            var preferred = properties
+                .OfType<VideoEncodingProperties>()
+                .Where(item => item.Width > 0 && item.Height > 0)
+                .OrderByDescending(item => item.Width * item.Height)
+                .FirstOrDefault(item => item.Width <= 1280 && item.Height <= 720)
+                ?? properties.OfType<VideoEncodingProperties>().FirstOrDefault();
+
+            if (preferred is not null)
+            {
+                await capture.VideoDeviceController
+                    .SetMediaStreamPropertiesAsync(MediaStreamType.VideoPreview, preferred)
+                    .AsTask(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Keep the default preview format if the device rejects changes.
+        }
+    }
+
     private sealed class CameraSession : IAsyncDisposable
     {
         public CameraSession(MediaCapture capture)
@@ -181,8 +229,21 @@ internal sealed class CameraCaptureService
         public ValueTask DisposeAsync()
         {
             Gate.Dispose();
+            return new ValueTask(DisposeCoreAsync());
+        }
+
+        private async Task DisposeCoreAsync()
+        {
+            try
+            {
+                await Capture.StopPreviewAsync().AsTask().ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignored
+            }
+
             Capture.Dispose();
-            return ValueTask.CompletedTask;
         }
     }
 }

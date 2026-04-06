@@ -1,0 +1,207 @@
+<Window
+    x:Class="NexRemote.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <muxc:NavigationView
+            x:Name="RootNavigationView"
+            IsBackButtonVisible="Collapsed"
+            IsPaneToggleButtonVisible="True"
+            OpenPaneLength="248"
+            SelectionChanged="OnNavigationSelectionChanged">
+            <muxc:NavigationView.Header>
+                <StackPanel Spacing="2">
+                    <TextBlock x:Name="NavigationHeaderText" Style="{StaticResource HeroTitleTextStyle}" Text="Dashboard" />
+                    <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="NexRemote desktop host for secure remote control and streaming." TextWrapping="WrapWholeWords" />
+                </StackPanel>
+            </muxc:NavigationView.Header>
+
+            <muxc:NavigationView.MenuItems>
+                <muxc:NavigationViewItem x:Name="DashboardNavItem" Content="Dashboard" Icon="Home" Tag="dashboard" IsSelected="True" />
+                <muxc:NavigationViewItem Content="Devices" Icon="Contact" Tag="devices" />
+                <muxc:NavigationViewItem Content="Compatibility" Icon="Accept" Tag="compatibility" />
+                <muxc:NavigationViewItem Content="Settings" Icon="Setting" Tag="settings" />
+                <muxc:NavigationViewItem Content="Legal" Icon="Document" Tag="legal" />
+            </muxc:NavigationView.MenuItems>
+
+            <muxc:NavigationView.FooterMenuItems>
+                <muxc:NavigationViewItem Content="Support Me" Icon="Like" Tag="support" />
+            </muxc:NavigationView.FooterMenuItems>
+
+            <Grid>
+                <ScrollViewer x:Name="DashboardPanel" Visibility="Visible">
+                    <StackPanel Spacing="20" Padding="28">
+                        <Grid ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Style="{StaticResource SurfaceCardStyle}">
+                                <StackPanel Spacing="16">
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Server Control" />
+                                    <TextBlock x:Name="ServerStatusTextBlock" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Name="ServerPortsTextBlock" Style="{StaticResource MutedBodyTextStyle}" TextWrapping="WrapWholeWords" />
+                                    <TextBlock x:Name="LanIpTextBlock" Style="{StaticResource MutedBodyTextStyle}" TextWrapping="WrapWholeWords" />
+                                    <TextBlock x:Name="DeviceIdTextBlock" Style="{StaticResource MutedBodyTextStyle}" TextWrapping="WrapWholeWords" />
+                                    <TextBlock x:Name="PermissionSummaryTextBlock" Style="{StaticResource MutedBodyTextStyle}" TextWrapping="WrapWholeWords" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="12">
+                                        <Button x:Name="ToggleServerButton" Click="OnToggleServerClick" Style="{StaticResource AccentActionButtonStyle}" />
+                                        <Button x:Name="SaveSettingsButton" Click="OnSaveSettingsClick" Content="Save Settings" />
+                                        <Button Click="OnReviewPermissionsClick" Content="Review Network Permission" />
+                                        <Button Click="OnReviewCameraPermissionClick" Content="Review Camera Permission" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Style="{StaticResource SurfaceCardStyle}">
+                                <StackPanel Spacing="14">
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Quick Connect" />
+                                    <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Scan this from the Android client to connect quickly over your LAN." TextWrapping="WrapWholeWords" />
+                                    <Border
+                                        Width="220"
+                                        Height="220"
+                                        CornerRadius="18"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <Image x:Name="QrImage" Stretch="Uniform" />
+                                            <TextBlock
+                                                x:Name="QrPlaceholderText"
+                                                Width="150"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Text="QR will appear when the server is ready."
+                                                TextAlignment="Center"
+                                                TextWrapping="WrapWholeWords"
+                                                Style="{StaticResource MutedBodyTextStyle}" />
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock x:Name="QrPayloadTextBlock" Style="{StaticResource SectionLabelTextStyle}" TextWrapping="WrapWholeWords" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Style="{StaticResource SurfaceCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="What To Do Next" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Use the Compatibility page to confirm the host is fully ready, then keep this dashboard focused on live server state and QR pairing." TextWrapping="WrapWholeWords" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="DevicesPanelRoot" Visibility="Collapsed">
+                    <Grid Padding="28" ColumnSpacing="20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Style="{StaticResource SurfaceCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Connected Devices" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Devices currently talking to this desktop host." TextWrapping="WrapWholeWords" />
+                                <StackPanel x:Name="ConnectedDevicesPanel" Spacing="10" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource SurfaceCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Trusted Devices" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Previously approved devices that can reconnect under the current trust model." TextWrapping="WrapWholeWords" />
+                                <StackPanel x:Name="TrustedDevicesPanel" Spacing="10" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="CompatibilityPanelRoot" Visibility="Collapsed">
+                    <StackPanel Padding="28" Spacing="20">
+                        <Border Style="{StaticResource SurfaceCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Compatibility" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Everything the host depends on to provide a clean experience for pairing, input, streaming, and transport." TextWrapping="WrapWholeWords" />
+                                <StackPanel x:Name="CompatibilityStatusPanel" Spacing="12" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="SettingsPanelRoot" Visibility="Collapsed">
+                    <StackPanel Padding="28" Spacing="20">
+                        <Grid ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Style="{StaticResource SurfaceCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Appearance And General" />
+                                    <TextBox x:Name="PcNameBox" Header="PC Name" />
+                                    <ComboBox x:Name="ThemeBox" Header="Theme" SelectionChanged="OnThemeSelectionChanged" />
+                                    <ToggleSwitch x:Name="AutoStartSwitch" Header="Start with Windows" />
+                                    <ToggleSwitch x:Name="MinimizeToTraySwitch" Header="Minimize to system tray" />
+                                    <ToggleSwitch x:Name="ShowNotificationsSwitch" Header="Show notifications" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Style="{StaticResource SurfaceCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Network And Privacy" />
+                                    <ToggleSwitch x:Name="EnableRemoteAccessSwitch" Header="Allow local network connections" />
+                                    <TextBox x:Name="ServerPortBox" Header="Secure port" />
+                                    <TextBox x:Name="ServerPortInsecureBox" Header="Fallback port" />
+                                    <TextBox x:Name="DiscoveryPortBox" Header="Discovery port" />
+                                    <ComboBox x:Name="FirewallProfileBox" Header="Firewall profile" />
+                                    <ToggleSwitch x:Name="RequireApprovalSwitch" Header="Require approval for new devices" />
+                                    <ToggleSwitch x:Name="AuditLoggingSwitch" Header="Audit logging" />
+                                    <ToggleSwitch x:Name="InputValidationSwitch" Header="Input validation" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="LegalPanelRoot" Visibility="Collapsed">
+                    <StackPanel Padding="28" Spacing="20">
+                        <Border Style="{StaticResource SurfaceCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Legal" />
+                                <TextBlock x:Name="LegalStatusTextBlock" Style="{StaticResource MutedBodyTextStyle}" TextWrapping="WrapWholeWords" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Each document opens in a dedicated reader window with Markdown rendering and full scrolling." TextWrapping="WrapWholeWords" />
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Button Click="OnViewTermsOfServiceClick" Content="View Terms of Service" />
+                                    <Button Click="OnViewTermsAndConditionsClick" Content="View Terms and Conditions" />
+                                    <Button Click="OnViewPrivacyPolicyClick" Content="View Privacy Policy" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="SupportPanelRoot" Visibility="Collapsed">
+                    <StackPanel Padding="28" Spacing="20">
+                        <Border Style="{StaticResource SurfaceCardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Support Me" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="If NexRemote is useful to you, you can support the project directly. Compatibility and setup guides live separately so this page stays focused on support." TextWrapping="WrapWholeWords" />
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Button Click="OnOpenSupportClick" Style="{StaticResource AccentActionButtonStyle}" Content="Support Me" />
+                                    <Button Click="OnOpenViGemGuideClick" Content="Open ViGEm Guide" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </muxc:NavigationView>
+    </Grid>
+</Window>

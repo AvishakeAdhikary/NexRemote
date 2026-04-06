@@ -105,7 +105,7 @@ public partial class App : Application
             return;
         }
 
-        DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
+        _window.DispatcherQueue.TryEnqueue(() =>
         {
             if (_window is MainWindow mainWindow)
             {

@@ -39,6 +39,7 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.SSLContext
@@ -77,6 +78,8 @@ class NexRemoteConnectionRepository(
     private var webSocket: WebSocket? = null
     private var pingJob: Job? = null
     private var reconnectJob: Job? = null
+    private var realtimeJob: Job? = null
+    private val pendingRealtime = ConcurrentHashMap<String, JsonObject>()
 
     private var intentionalDisconnect = false
     private var reconnectAttempt = 0
@@ -103,6 +106,10 @@ class NexRemoteConnectionRepository(
     val messages: SharedFlow<JsonObject> = _messages
     val binaryFrames: SharedFlow<ByteArray> = _binaryFrames
     val events: SharedFlow<String> = _events
+
+    init {
+        startRealtimeLoop()
+    }
 
     suspend fun connect(server: ServerInfo, trySecureFirst: Boolean = true): Boolean {
         val settings = preferences.settings.value
@@ -169,6 +176,7 @@ class NexRemoteConnectionRepository(
         intentionalDisconnect = true
         reconnectJob?.cancel()
         pingJob?.cancel()
+        pendingRealtime.clear()
         webSocket?.close(1000, "User disconnected")
         webSocket = null
         _connectionState.value = ConnectionStatus.DISCONNECTED
@@ -178,13 +186,23 @@ class NexRemoteConnectionRepository(
 
     fun sendMessage(payload: Map<String, Any?>) {
         if (_connectionState.value != ConnectionStatus.CONNECTED) return
-        val json = JsonCodec.encodeToString(JsonObject.serializer(), mapToJsonObject(payload))
-        webSocket?.send(CryptoUtils.encryptToBase64(json))
+        val objectPayload = mapToJsonObject(payload)
+        val realtimeKey = realtimeKeyFor(objectPayload)
+        if (realtimeKey != null) {
+            enqueueRealtime(realtimeKey, objectPayload)
+            return
+        }
+        sendEncryptedJson(objectPayload)
     }
 
     fun sendRawJson(payload: Map<String, Any?>) {
         val json = JsonCodec.encodeToString(JsonObject.serializer(), mapToJsonObject(payload))
         webSocket?.send(json)
+    }
+
+    private fun sendEncryptedJson(payload: JsonObject) {
+        val json = JsonCodec.encodeToString(JsonObject.serializer(), payload)
+        webSocket?.send(CryptoUtils.encryptToBase64(json))
     }
 
     private suspend fun attemptConnection(
@@ -349,6 +367,7 @@ class NexRemoteConnectionRepository(
 
     private fun handleSocketFailure() {
         pingJob?.cancel()
+        pendingRealtime.clear()
         webSocket = null
         if (!intentionalDisconnect) {
             _connectionState.value = ConnectionStatus.CONNECTING
@@ -356,6 +375,63 @@ class NexRemoteConnectionRepository(
         } else {
             _connectionState.value = ConnectionStatus.DISCONNECTED
             _serverSessionState.value = ServerSessionState()
+        }
+    }
+
+    private fun startRealtimeLoop() {
+        realtimeJob?.cancel()
+        realtimeJob = scope.launch {
+            while (true) {
+                delay(6)
+                if (_connectionState.value != ConnectionStatus.CONNECTED || pendingRealtime.isEmpty()) {
+                    continue
+                }
+
+                val snapshot = pendingRealtime.entries.toList()
+                snapshot.forEach { (key, payload) ->
+                    if (pendingRealtime.remove(key, payload)) {
+                        sendEncryptedJson(payload)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun enqueueRealtime(key: String, payload: JsonObject) {
+        val type = payload.string("type").orEmpty()
+        val action = payload.string("action").orEmpty()
+        val merged = when {
+            type == "mouse" && action == "move_relative" -> mergeDeltaPayload(key, payload)
+            type == "mouse" && action == "scroll" -> mergeDeltaPayload(key, payload)
+            else -> payload
+        }
+        pendingRealtime[key] = merged
+    }
+
+    private fun mergeDeltaPayload(key: String, payload: JsonObject): JsonObject {
+        val existing = pendingRealtime[key] ?: return payload
+        val dx = (existing.int("dx") ?: 0) + (payload.int("dx") ?: 0)
+        val dy = (existing.int("dy") ?: 0) + (payload.int("dy") ?: 0)
+        return JsonObject(payload.toMutableMap().apply {
+            this["dx"] = kotlinx.serialization.json.JsonPrimitive(dx)
+            this["dy"] = kotlinx.serialization.json.JsonPrimitive(dy)
+        })
+    }
+
+    private fun realtimeKeyFor(payload: JsonObject): String? {
+        return when (payload.string("type")) {
+            "mouse" -> when (payload.string("action")) {
+                "move_relative" -> "mouse_move_relative"
+                "scroll" -> "mouse_scroll"
+                else -> null
+            }
+            "gamepad", "gamepad_dinput", "gamepad_android" -> when (payload.string("input_type")) {
+                "joystick" -> "gamepad_joystick_${payload.string("stick").orEmpty()}"
+                "trigger" -> "gamepad_trigger_${payload.string("trigger").orEmpty()}"
+                "gyro" -> "gamepad_gyro"
+                else -> null
+            }
+            else -> null
         }
     }
 

@@ -31,6 +31,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
     private readonly IMessageEncryptionService _encryptionService;
     private readonly ICertificateService _certificateService;
     private readonly IGamepadDriverService _gamepadDriverService;
+    private readonly IGamepadTransportService _gamepadTransportService;
     private readonly IAdbBridgeService _adbBridgeService;
     private readonly IClipboardService _clipboardService;
     private readonly ILogger<RemoteServerHost> _logger;
@@ -61,6 +62,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
         IMessageEncryptionService encryptionService,
         ICertificateService certificateService,
         IGamepadDriverService gamepadDriverService,
+        IGamepadTransportService gamepadTransportService,
         IAdbBridgeService adbBridgeService,
         IClipboardService clipboardService,
         ILogger<RemoteServerHost> logger)
@@ -74,6 +76,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
         _encryptionService = encryptionService;
         _certificateService = certificateService;
         _gamepadDriverService = gamepadDriverService;
+        _gamepadTransportService = gamepadTransportService;
         _adbBridgeService = adbBridgeService;
         _clipboardService = clipboardService;
         _logger = logger;
@@ -110,7 +113,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
 
     public void RefreshCapabilities()
     {
-        var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady();
+        var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady() && _gamepadTransportService.IsReady;
         UpdateCapabilities(gamepadAvailable, _gamepadMode);
         Capabilities.Gamepad = gamepadAvailable;
         Capabilities.CameraStreaming = Settings.CameraAccessConsentGranted;
@@ -423,7 +426,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
 
     private IReadOnlyDictionary<string, FeatureStatusInfo> CreateFeatureStatus()
     {
-        var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady();
+        var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady() && _gamepadTransportService.IsReady;
         var gamepadDriverInstalled = _gamepadDriverService.IsViGEmBusInstalled();
         var adbStatus = _adbBridgeService.CurrentStatus;
 
@@ -441,7 +444,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
             ["gamepad"] = gamepadAvailable
                 ? Available("Native gamepad transport is ready.")
                 : gamepadDriverInstalled
-                    ? Unavailable("Install the NexRemote gamepad companion to activate native controller transport.", "install_gamepad_companion")
+                    ? Unavailable("ViGEmBus is installed, but the virtual controller backend is still initializing or needs the host restarted cleanly.", "restart_server")
                     : Unavailable("Install ViGEmBus to enable native gamepad transport.", "install_vigem"),
             ["usb_bridge"] = adbStatus.ToolAvailable
                 ? adbStatus.ReverseActive

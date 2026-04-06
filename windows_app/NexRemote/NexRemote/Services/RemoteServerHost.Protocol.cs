@@ -140,6 +140,7 @@ public sealed partial class RemoteServerHost
         {
             if (session is not null)
             {
+                _gamepadTransportService.DisconnectClient(session.ClientId);
                 UnregisterSession(session.ClientId);
                 session.StopAllBackgroundWork();
                 session.Abort();
@@ -190,8 +191,16 @@ public sealed partial class RemoteServerHost
                 case "gamepad":
                 case "gamepad_xinput":
                 case "gamepad_android":
+                    if (!TryHandleHybridGamepadInput(message))
+                    {
+                        _gamepadTransportService.TryHandleInput(session.ClientId, message);
+                    }
                     break;
                 case "gamepad_dinput":
+                    if (!TryHandleHybridGamepadInput(message))
+                    {
+                        _gamepadTransportService.TryHandleInput(session.ClientId, message);
+                    }
                     UpdateCapabilities(Capabilities.GamepadAvailable, "dinput");
                     break;
                 case "gamepad_mode":
@@ -348,5 +357,60 @@ public sealed partial class RemoteServerHost
         result[headerBytes.Length] = index;
         Buffer.BlockCopy(payload, 0, result, headerBytes.Length + 1, payload.Length);
         return result;
+    }
+
+    private bool TryHandleHybridGamepadInput(JsonElement message)
+    {
+        if (!string.Equals(GetString(message, "input_type"), "button", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var button = GetString(message, "button");
+        var pressed = message.TryGetProperty("pressed", out var pressedProp) &&
+                      pressedProp.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                      pressedProp.GetBoolean();
+
+        if (button.StartsWith("keyboard_", StringComparison.OrdinalIgnoreCase))
+        {
+            var key = button["keyboard_".Length..];
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (pressed)
+            {
+                _inputService.PressKeyDirect(key);
+            }
+            else
+            {
+                _inputService.ReleaseKeyDirect(key);
+            }
+
+            return true;
+        }
+
+        if (button.StartsWith("mouse_", StringComparison.OrdinalIgnoreCase))
+        {
+            var mouseButton = button["mouse_".Length..];
+            if (string.IsNullOrWhiteSpace(mouseButton))
+            {
+                return false;
+            }
+
+            if (pressed)
+            {
+                _inputService.MouseDownDirect(mouseButton);
+            }
+            else
+            {
+                _inputService.MouseUpDirect(mouseButton);
+            }
+
+            return true;
+        }
+
+        return false;
     }
 }

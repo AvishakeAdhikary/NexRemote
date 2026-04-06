@@ -74,9 +74,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.neuralnexusstudios.nexremote.core.AppContainer
 import com.neuralnexusstudios.nexremote.core.feature.FileExplorerEvent
+import com.neuralnexusstudios.nexremote.core.model.DriveInfo
 import com.neuralnexusstudios.nexremote.core.model.FileItem
 import com.neuralnexusstudios.nexremote.core.model.FileProperties
 import com.neuralnexusstudios.nexremote.ui.components.AppTopBar
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class EditorState(
@@ -95,6 +97,7 @@ fun FileExplorerScreen(
     val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
     val files = remember { mutableStateListOf<FileItem>() }
+    val drives = remember { mutableStateListOf<DriveInfo>() }
     val history = remember { mutableStateListOf("C:\\") }
     var currentPath by remember { mutableStateOf("C:\\") }
     var search by remember { mutableStateOf("") }
@@ -118,8 +121,13 @@ fun FileExplorerScreen(
         appContainer.fileExplorerRepository.requestList(path)
     }
 
+    fun refreshDrives() {
+        appContainer.fileExplorerRepository.requestDrives()
+    }
+
     LaunchedEffect(fileTransferAvailable) {
         if (fileTransferAvailable) {
+            refreshDrives()
             load(currentPath)
         }
     }
@@ -127,6 +135,16 @@ fun FileExplorerScreen(
     LaunchedEffect(Unit) {
         appContainer.fileExplorerRepository.events.collect { event ->
             when (event) {
+                is FileExplorerEvent.DriveListing -> {
+                    drives.clear()
+                    drives += event.drives.filter { it.isReady }
+                    val currentDriveMissing = drives.isNotEmpty() && drives.none { currentPath.startsWith(it.path, ignoreCase = true) }
+                    if (currentDriveMissing) {
+                        history.clear()
+                        history += drives.first().path
+                        load(drives.first().path)
+                    }
+                }
                 is FileExplorerEvent.Listing -> {
                     files.clear()
                     files += event.files
@@ -142,10 +160,28 @@ fun FileExplorerScreen(
                 is FileExplorerEvent.Properties -> showingProperties = event.properties
                 is FileExplorerEvent.Success -> {
                     snackbars.showSnackbar(event.message)
-                    if (editorState == null) load(currentPath)
+                    if (editorState == null) {
+                        refreshDrives()
+                        load(currentPath)
+                        scope.launch {
+                            delay(350)
+                            refreshDrives()
+                            load(currentPath)
+                        }
+                    }
                 }
                 is FileExplorerEvent.Error -> snackbars.showSnackbar(event.message)
             }
+        }
+    }
+
+    LaunchedEffect(fileTransferAvailable, editorState, search, currentPath) {
+        while (fileTransferAvailable && editorState == null) {
+            refreshDrives()
+            if (search.isBlank()) {
+                load(currentPath)
+            }
+            delay(4_500)
         }
     }
 
@@ -156,7 +192,12 @@ fun FileExplorerScreen(
             onToggleLineNumbers = { showLineNumbers = !showLineNumbers },
             onChange = { editorState = editorState?.copy(currentContent = it) },
             onBack = {
-                if (editorState?.currentContent != editorState?.originalContent) confirmDiscard = true else editorState = null
+                if (editorState?.currentContent != editorState?.originalContent) {
+                    confirmDiscard = true
+                } else {
+                    editorState = null
+                    if (fileTransferAvailable) load(currentPath)
+                }
             },
             onSave = {
                 val state = editorState ?: return@FileEditorPage
@@ -167,6 +208,7 @@ fun FileExplorerScreen(
     } else {
         FileBrowserPage(
             currentPath = currentPath,
+            drives = drives,
             files = files,
             search = search,
             canGoUp = history.size > 1,
@@ -184,11 +226,24 @@ fun FileExplorerScreen(
                 search = ""
                 if (fileTransferAvailable) load(currentPath)
             },
-            onReload = { if (fileTransferAvailable) load(currentPath) },
+            onReload = {
+                if (fileTransferAvailable) {
+                    refreshDrives()
+                    load(currentPath)
+                }
+            },
+            onRefreshDrives = { if (fileTransferAvailable) refreshDrives() },
             onUp = {
                 if (fileTransferAvailable) {
                     history.removeAt(history.lastIndex)
                     load(history.last())
+                }
+            },
+            onSelectDrive = { drive ->
+                if (fileTransferAvailable) {
+                    history.clear()
+                    history += drive.path
+                    load(drive.path)
                 }
             },
             onNewFolder = { if (fileTransferAvailable) createType = "folder" },
@@ -295,6 +350,7 @@ fun FileExplorerScreen(
 @Composable
 private fun FileBrowserPage(
     currentPath: String,
+    drives: List<DriveInfo>,
     files: List<FileItem>,
     search: String,
     canGoUp: Boolean,
@@ -306,7 +362,9 @@ private fun FileBrowserPage(
     onSearch: () -> Unit,
     onClearSearch: () -> Unit,
     onReload: () -> Unit,
+    onRefreshDrives: () -> Unit,
     onUp: () -> Unit,
+    onSelectDrive: (DriveInfo) -> Unit,
     onNewFolder: () -> Unit,
     onNewFile: () -> Unit,
     onPaste: () -> Unit,
@@ -346,6 +404,9 @@ private fun FileBrowserPage(
                     IconButton(onClick = onReload) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
+                    IconButton(onClick = onRefreshDrives) {
+                        Icon(Icons.Outlined.SyncAlt, contentDescription = "Refresh drives")
+                    }
                 },
             )
         },
@@ -383,6 +444,22 @@ private fun FileBrowserPage(
             )
 
             Text(currentPath, style = MaterialTheme.typography.bodyMedium)
+
+            if (drives.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    drives.forEach { drive ->
+                        OutlinedButton(
+                            onClick = { onSelectDrive(drive) },
+                            enabled = enabled,
+                        ) {
+                            Text((drive.label?.takeIf { it.isNotBlank() }?.plus(" • ") ?: "") + drive.path)
+                        }
+                    }
+                }
+            }
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(files, key = { it.path }) { item ->

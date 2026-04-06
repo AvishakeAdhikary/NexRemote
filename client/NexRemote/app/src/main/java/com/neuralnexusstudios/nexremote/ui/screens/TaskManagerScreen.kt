@@ -82,10 +82,9 @@ fun TaskManagerScreen(
                 val ready = appContainer.connectionRepository.serverSessionState.value.connected &&
                     appContainer.connectionRepository.serverSessionState.value.featureStatus["task_manager"]?.available != false
                 if (ready) {
-                    appContainer.taskManagerRepository.requestProcesses()
-                    appContainer.taskManagerRepository.requestSystemInfo()
+                    appContainer.taskManagerRepository.requestSnapshot()
                 }
-                delay(2_000)
+                delay(1_250)
             }
         }
         launch {
@@ -128,8 +127,7 @@ fun TaskManagerScreen(
                     }
                     IconButton(onClick = {
                         if (taskManagerAvailable) {
-                            appContainer.taskManagerRepository.requestProcesses()
-                            appContainer.taskManagerRepository.requestSystemInfo()
+                            appContainer.taskManagerRepository.requestSnapshot()
                         } else {
                             scope.launch { snackbars.showSnackbar(taskManagerReason ?: "Task Manager is not ready yet.") }
                         }

@@ -51,6 +51,9 @@ fun TouchpadScreen(
     val performHaptic = rememberAppHaptics(settings.appHapticsEnabled)
     val touchpadAvailable = sessionState.connected && sessionState.featureStatus["touchpad"]?.available != false
     val touchpadReason = sessionState.featureStatus["touchpad"]?.reason
+    var moveCarryX by remember { mutableFloatStateOf(0f) }
+    var moveCarryY by remember { mutableFloatStateOf(0f) }
+    var scrollCarryY by remember { mutableFloatStateOf(0f) }
 
     fun mouseClick(button: String, count: Int = 1) {
         if (!touchpadAvailable) return
@@ -102,12 +105,19 @@ fun TouchpadScreen(
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
                                 if (!touchpadAvailable) return@detectDragGestures
+                                val scaledDx = dragAmount.x * sensitivity + moveCarryX
+                                val scaledDy = dragAmount.y * sensitivity + moveCarryY
+                                val dx = scaledDx.toInt()
+                                val dy = scaledDy.toInt()
+                                moveCarryX = scaledDx - dx
+                                moveCarryY = scaledDy - dy
+                                if (dx == 0 && dy == 0) return@detectDragGestures
                                 connection.sendMessage(
                                     mapOf(
                                         "type" to "mouse",
                                         "action" to "move_relative",
-                                        "dx" to (dragAmount.x * sensitivity).toInt(),
-                                        "dy" to (dragAmount.y * sensitivity).toInt(),
+                                        "dx" to dx,
+                                        "dy" to dy,
                                     ),
                                 )
                             }
@@ -135,12 +145,16 @@ fun TouchpadScreen(
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
                                 if (!touchpadAvailable) return@detectDragGestures
+                                val scaledDy = (-dragAmount.y) + scrollCarryY
+                                val dy = scaledDy.toInt()
+                                scrollCarryY = scaledDy - dy
+                                if (dy == 0) return@detectDragGestures
                                 connection.sendMessage(
                                     mapOf(
                                         "type" to "mouse",
                                         "action" to "scroll",
                                         "dx" to 0,
-                                        "dy" to (-dragAmount.y).toInt(),
+                                        "dy" to dy,
                                     ),
                                 )
                             }

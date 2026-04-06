@@ -11,9 +11,14 @@ namespace NexRemote.Services;
 
 internal sealed class TaskManagerService
 {
+    private static readonly TimeSpan SnapshotFreshness = TimeSpan.FromSeconds(1);
     private readonly object _sampleGate = new();
     private readonly Dictionary<int, ProcessSample> _processSamples = new();
     private CpuSample? _systemCpuSample;
+    private readonly object _snapshotGate = new();
+    private DateTimeOffset _lastSnapshotAt = DateTimeOffset.MinValue;
+    private object? _cachedSnapshot;
+    private Task? _refreshTask;
 
     public Task<object> HandleRequestAsync(JsonElement data)
     {
@@ -22,6 +27,7 @@ internal sealed class TaskManagerService
             var action = GetString(data, "action");
             object response = action switch
             {
+                "snapshot" => GetSnapshot(),
                 "list_processes" => ListProcesses(),
                 "end_process" => EndProcess(ReadInt32(data, "pid")),
                 "system_info" => GetSystemInfo(),
@@ -40,41 +46,11 @@ internal sealed class TaskManagerService
     {
         try
         {
-            var processes = new List<object>();
-            foreach (var process in Process.GetProcesses())
-            {
-                try
-                {
-                    processes.Add(new
-                    {
-                        pid = process.Id,
-                        name = SafeProcessName(process),
-                        cpu = Math.Round(GetProcessCpuUsage(process), 1),
-                        memory = process.WorkingSet64
-                    });
-                }
-                catch
-                {
-                    // Skip inaccessible process.
-                }
-                finally
-                {
-                    process.Dispose();
-                }
-            }
-
-            var ordered = processes
-                .Cast<dynamic>()
-                .OrderByDescending(item => (double)item.cpu)
-                .ThenBy(item => ((string)item.name).ToLowerInvariant())
-                .Cast<object>()
-                .ToList();
-
             return new
             {
                 type = "task_manager",
                 action = "list_processes",
-                processes = ordered
+                processes = CaptureProcesses()
             };
         }
         catch (Exception ex)
@@ -124,37 +100,126 @@ internal sealed class TaskManagerService
     {
         try
         {
-            var memory = new MemoryStatusEx();
-            memory.Init();
-            if (!GlobalMemoryStatusEx(ref memory))
-            {
-                throw new InvalidOperationException("GlobalMemoryStatusEx failed");
-            }
-
-            var disk = DriveInfo.GetDrives()
-                .FirstOrDefault(drive => drive.IsReady && string.Equals(drive.Name, @"C:\", StringComparison.OrdinalIgnoreCase));
-
-            var diskPercent = 0.0;
-            if (disk is not null && disk.TotalSize > 0)
-            {
-                diskPercent = (disk.TotalSize - disk.AvailableFreeSpace) * 100.0 / disk.TotalSize;
-            }
-
-            return new
-            {
-                type = "task_manager",
-                action = "system_info",
-                cpu_usage = Math.Round(GetCpuUsage(), 1),
-                memory_usage = Math.Round((double)memory.MemoryLoad, 1),
-                disk_usage = Math.Round(diskPercent, 1),
-                memory_total = memory.TotalPhys,
-                memory_available = memory.AvailPhys
-            };
+            return CreateSystemInfoPayload();
         }
         catch (Exception ex)
         {
             return Error($"Failed to get system info: {ex.Message}");
         }
+    }
+
+    private object GetSnapshot()
+    {
+        lock (_snapshotGate)
+        {
+            if (_cachedSnapshot is not null &&
+                DateTimeOffset.UtcNow - _lastSnapshotAt < SnapshotFreshness)
+            {
+                return _cachedSnapshot;
+            }
+
+            if (_cachedSnapshot is not null)
+            {
+                QueueSnapshotRefresh();
+                return _cachedSnapshot;
+            }
+
+            _cachedSnapshot = CaptureSnapshot();
+            _lastSnapshotAt = DateTimeOffset.UtcNow;
+            return _cachedSnapshot;
+        }
+    }
+
+    private object CaptureSnapshot()
+    {
+        return new
+        {
+            type = "task_manager",
+            action = "snapshot",
+            system = CreateSystemInfoPayload(includeEnvelope: false),
+            processes = CaptureProcesses()
+        };
+    }
+
+    private void QueueSnapshotRefresh()
+    {
+        if (_refreshTask is not null && !_refreshTask.IsCompleted)
+        {
+            return;
+        }
+
+        _refreshTask = Task.Run(() =>
+        {
+            var snapshot = CaptureSnapshot();
+            lock (_snapshotGate)
+            {
+                _cachedSnapshot = snapshot;
+                _lastSnapshotAt = DateTimeOffset.UtcNow;
+            }
+        });
+    }
+
+    private List<object> CaptureProcesses()
+    {
+        var processes = new List<object>();
+        foreach (var process in Process.GetProcesses())
+        {
+            try
+            {
+                processes.Add(new
+                {
+                    pid = process.Id,
+                    name = SafeProcessName(process),
+                    cpu = Math.Round(GetProcessCpuUsage(process), 1),
+                    memory = process.WorkingSet64
+                });
+            }
+            catch
+            {
+                // Skip inaccessible process.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        return processes
+            .Cast<dynamic>()
+            .OrderByDescending(item => (double)item.cpu)
+            .ThenBy(item => ((string)item.name).ToLowerInvariant())
+            .Cast<object>()
+            .ToList();
+    }
+
+    private object CreateSystemInfoPayload(bool includeEnvelope = true)
+    {
+        var memory = new MemoryStatusEx();
+        memory.Init();
+        if (!GlobalMemoryStatusEx(ref memory))
+        {
+            throw new InvalidOperationException("GlobalMemoryStatusEx failed");
+        }
+
+        var systemDrive = DriveInfo.GetDrives()
+            .FirstOrDefault(drive => drive.IsReady && string.Equals(drive.Name, Path.GetPathRoot(Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase));
+
+        var diskPercent = 0.0;
+        if (systemDrive is not null && systemDrive.TotalSize > 0)
+        {
+            diskPercent = (systemDrive.TotalSize - systemDrive.AvailableFreeSpace) * 100.0 / systemDrive.TotalSize;
+        }
+
+        return new
+        {
+            type = includeEnvelope ? "task_manager" : null,
+            action = includeEnvelope ? "system_info" : null,
+            cpu_usage = Math.Round(GetCpuUsage(), 1),
+            memory_usage = Math.Round((double)memory.MemoryLoad, 1),
+            disk_usage = Math.Round(diskPercent, 1),
+            memory_total = memory.TotalPhys,
+            memory_available = memory.AvailPhys
+        };
     }
 
     private static string SafeProcessName(Process process)

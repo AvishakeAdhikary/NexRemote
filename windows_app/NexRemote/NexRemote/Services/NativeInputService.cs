@@ -118,6 +118,16 @@ internal sealed class NativeInputService
         }
     }
 
+    public void PressKeyDirect(string key) => PressKey(key);
+
+    public void ReleaseKeyDirect(string key) => ReleaseKey(key);
+
+    public void MouseDownDirect(string buttonName) => MouseDown(buttonName);
+
+    public void MouseUpDirect(string buttonName) => MouseUp(buttonName);
+
+    public void ClickDirect(string buttonName, int count) => Click(buttonName, count);
+
     public void MovePointerAbsolute(int x, int y) => MoveAbsolute(x, y);
 
     public void ClickAt(int x, int y, string buttonName, int count)

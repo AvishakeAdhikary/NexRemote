@@ -139,6 +139,14 @@ data class FileProperties(
     val created: String,
 )
 
+data class DriveInfo(
+    val name: String,
+    val path: String,
+    val kind: String,
+    val isReady: Boolean,
+    val label: String? = null,
+)
+
 data class ProcessInfo(
     val name: String,
     val pid: Int,

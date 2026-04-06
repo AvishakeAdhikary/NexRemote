@@ -12,12 +12,6 @@ namespace NexRemote.Services;
 
 internal sealed class FileExplorerService
 {
-    private readonly string[] _allowedRoots =
-    [
-        Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\",
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-    ];
-
     private readonly long _maxReadSize = 5L * 1024 * 1024;
 
     public Task<object> HandleRequestAsync(JsonElement data)
@@ -27,6 +21,7 @@ internal sealed class FileExplorerService
             var action = GetString(data, "action");
             object response = action switch
             {
+                "drive_list" => ListDrives(),
                 "list" => ListDirectory(GetString(data, "path", @"C:\")),
                 "open" => OpenPath(GetString(data, "path")),
                 "properties" => GetProperties(GetString(data, "path")),
@@ -48,6 +43,35 @@ internal sealed class FileExplorerService
         catch (Exception ex)
         {
             return Task.FromResult<object>(new { type = "file_explorer", action = "error", message = ex.Message });
+        }
+    }
+
+    private object ListDrives()
+    {
+        try
+        {
+            var drives = DriveInfo.GetDrives()
+                .Select(drive => new
+                {
+                    name = drive.Name,
+                    path = drive.Name,
+                    kind = drive.DriveType.ToString().ToLowerInvariant(),
+                    is_ready = drive.IsReady,
+                    label = drive.IsReady ? drive.VolumeLabel : string.Empty
+                })
+                .OrderBy(drive => drive.name)
+                .ToList();
+
+            return new
+            {
+                type = "file_explorer",
+                action = "drive_list",
+                drives
+            };
+        }
+        catch (Exception ex)
+        {
+            return Error($"Failed to list drives: {ex.Message}");
         }
     }
 
@@ -522,8 +546,10 @@ internal sealed class FileExplorerService
         try
         {
             var resolved = Path.GetFullPath(path);
-            return _allowedRoots.Any(root => !string.IsNullOrWhiteSpace(root) &&
-                                             resolved.StartsWith(Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase));
+            return DriveInfo.GetDrives()
+                .Select(drive => drive.Name)
+                .Where(root => !string.IsNullOrWhiteSpace(root))
+                .Any(root => resolved.StartsWith(Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase));
         }
         catch
         {

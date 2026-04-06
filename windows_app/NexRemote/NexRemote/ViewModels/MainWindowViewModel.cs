@@ -19,6 +19,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly ILegalDocumentService _legalDocumentService;
     private readonly ITrustedDeviceService _trustedDeviceService;
     private readonly IGamepadDriverService _gamepadDriverService;
+    private readonly IGamepadTransportService _gamepadTransportService;
     private BitmapImage? _qrCodeImage;
     private string _termsOfServiceText = string.Empty;
     private string _termsAndConditionsText = string.Empty;
@@ -51,7 +52,8 @@ public sealed class MainWindowViewModel : ObservableObject
         IQrCodeService qrCodeService,
         ILegalDocumentService legalDocumentService,
         ITrustedDeviceService trustedDeviceService,
-        IGamepadDriverService gamepadDriverService)
+        IGamepadDriverService gamepadDriverService,
+        IGamepadTransportService gamepadTransportService)
     {
         _settingsService = settingsService;
         _serverCoordinator = serverCoordinator;
@@ -60,6 +62,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _legalDocumentService = legalDocumentService;
         _trustedDeviceService = trustedDeviceService;
         _gamepadDriverService = gamepadDriverService;
+        _gamepadTransportService = gamepadTransportService;
 
         ConnectedClients = new ObservableCollection<ClientConnectionViewModel>();
         TrustedDevices = new ObservableCollection<TrustedDeviceViewModel>();
@@ -89,8 +92,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public string GamepadSupportText => _gamepadDriverInstalled
         ? _gamepadTransportReady
-            ? "ViGEmBus and the NexRemote companion are installed. Native gamepad transport is ready."
-            : "ViGEmBus is installed. Add the NexRemote gamepad companion to activate native controller transport."
+            ? "ViGEmBus is installed and native controller transport is ready."
+            : "ViGEmBus is installed, but the controller backend is still initializing or needs the host restarted cleanly."
         : "Install ViGEmBus to enable native virtual gamepad compatibility.";
 
     public Visibility GamepadBannerVisibility => _gamepadTransportReady ? Visibility.Collapsed : Visibility.Visible;
@@ -283,14 +286,13 @@ public sealed class MainWindowViewModel : ObservableObject
         var conditionsTask = _legalDocumentService.LoadTermsAndConditionsAsync();
         var privacyTask = _legalDocumentService.LoadPrivacyPolicyAsync();
         var gamepadTask = _gamepadDriverService.IsViGEmBusInstalledAsync();
-        var gamepadTransportTask = _gamepadDriverService.IsNativeTransportReadyAsync();
 
-        await Task.WhenAll(termsTask, conditionsTask, privacyTask, gamepadTask, gamepadTransportTask);
+        await Task.WhenAll(termsTask, conditionsTask, privacyTask, gamepadTask);
         TermsOfServiceText = termsTask.Result;
         TermsAndConditionsText = conditionsTask.Result;
         PrivacyPolicyText = privacyTask.Result;
         _gamepadDriverInstalled = gamepadTask.Result;
-        _gamepadTransportReady = gamepadTransportTask.Result;
+        _gamepadTransportReady = _gamepadDriverInstalled && _gamepadTransportService.IsReady;
         _serverCoordinator.RefreshCapabilities();
 
         var lanIp = _localNetworkService.GetLanIpAddress();

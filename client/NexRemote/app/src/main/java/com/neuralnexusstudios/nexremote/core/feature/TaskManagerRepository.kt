@@ -34,6 +34,25 @@ class TaskManagerRepository(private val connectionRepository: NexRemoteConnectio
             connectionRepository.messages.collect { payload ->
                 if (payload.string("type") == "task_manager") {
                     when (payload.string("action")) {
+                        "snapshot" -> {
+                            payload["system"]?.jsonObject?.let { system ->
+                                _systemInfo.value = SystemInfo(
+                                    cpuUsage = system.double("cpu_usage") ?: 0.0,
+                                    memoryUsage = system.double("memory_usage") ?: 0.0,
+                                    diskUsage = system.double("disk_usage") ?: 0.0,
+                                )
+                            }
+                            _processes.value = payload["processes"]?.jsonArray?.map { item ->
+                                item.jsonObject.let {
+                                    ProcessInfo(
+                                        name = it.string("name") ?: "Unknown",
+                                        pid = it.int("pid") ?: 0,
+                                        cpu = it.double("cpu") ?: 0.0,
+                                        memory = it["memory"]?.jsonPrimitive?.longOrNull ?: 0L,
+                                    )
+                                }
+                            }.orEmpty()
+                        }
                         "list_processes" -> {
                             _processes.value = payload["processes"]?.jsonArray?.map { item ->
                                 item.jsonObject.let {
@@ -61,6 +80,7 @@ class TaskManagerRepository(private val connectionRepository: NexRemoteConnectio
         }
     }
 
+    fun requestSnapshot() = connectionRepository.sendMessage(mapOf("type" to "task_manager", "action" to "snapshot"))
     fun requestProcesses() = connectionRepository.sendMessage(mapOf("type" to "task_manager", "action" to "list_processes"))
     fun requestSystemInfo() = connectionRepository.sendMessage(mapOf("type" to "task_manager", "action" to "system_info"))
     fun endProcess(pid: Int) = connectionRepository.sendMessage(mapOf("type" to "task_manager", "action" to "end_process", "pid" to pid))
