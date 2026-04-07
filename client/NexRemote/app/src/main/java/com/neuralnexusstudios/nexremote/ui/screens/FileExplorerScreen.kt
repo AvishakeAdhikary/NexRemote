@@ -64,7 +64,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,8 +77,6 @@ import com.neuralnexusstudios.nexremote.core.model.DriveInfo
 import com.neuralnexusstudios.nexremote.core.model.FileItem
 import com.neuralnexusstudios.nexremote.core.model.FileProperties
 import com.neuralnexusstudios.nexremote.ui.components.AppTopBar
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 private data class EditorState(
     val path: String,
@@ -94,7 +91,6 @@ fun FileExplorerScreen(
     appContainer: AppContainer,
     onBack: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
     val files = remember { mutableStateListOf<FileItem>() }
     val drives = remember { mutableStateListOf<DriveInfo>() }
@@ -125,10 +121,20 @@ fun FileExplorerScreen(
         appContainer.fileExplorerRepository.requestDrives()
     }
 
+    fun refreshCurrentDirectory(includeDrives: Boolean = true) {
+        if (includeDrives) {
+            refreshDrives()
+        }
+        if (search.isBlank()) {
+            load(currentPath)
+        } else {
+            appContainer.fileExplorerRepository.search(currentPath, search.trim())
+        }
+    }
+
     LaunchedEffect(fileTransferAvailable) {
         if (fileTransferAvailable) {
-            refreshDrives()
-            load(currentPath)
+            refreshCurrentDirectory()
         }
     }
 
@@ -161,27 +167,11 @@ fun FileExplorerScreen(
                 is FileExplorerEvent.Success -> {
                     snackbars.showSnackbar(event.message)
                     if (editorState == null) {
-                        refreshDrives()
-                        load(currentPath)
-                        scope.launch {
-                            delay(350)
-                            refreshDrives()
-                            load(currentPath)
-                        }
+                        refreshCurrentDirectory()
                     }
                 }
                 is FileExplorerEvent.Error -> snackbars.showSnackbar(event.message)
             }
-        }
-    }
-
-    LaunchedEffect(fileTransferAvailable, editorState, search, currentPath) {
-        while (fileTransferAvailable && editorState == null) {
-            refreshDrives()
-            if (search.isBlank()) {
-                load(currentPath)
-            }
-            delay(4_500)
         }
     }
 
@@ -207,6 +197,7 @@ fun FileExplorerScreen(
         )
     } else {
         FileBrowserPage(
+            snackbars = snackbars,
             currentPath = currentPath,
             drives = drives,
             files = files,
@@ -219,17 +210,18 @@ fun FileExplorerScreen(
             onSearchChange = { search = it },
             onSearch = {
                 if (fileTransferAvailable) {
-                    if (search.isBlank()) load(currentPath) else appContainer.fileExplorerRepository.search(currentPath, search.trim())
+                    refreshCurrentDirectory(includeDrives = false)
                 }
             },
             onClearSearch = {
                 search = ""
-                if (fileTransferAvailable) load(currentPath)
+                if (fileTransferAvailable) {
+                    refreshCurrentDirectory(includeDrives = false)
+                }
             },
             onReload = {
                 if (fileTransferAvailable) {
-                    refreshDrives()
-                    load(currentPath)
+                    refreshCurrentDirectory()
                 }
             },
             onRefreshDrives = { if (fileTransferAvailable) refreshDrives() },
@@ -349,6 +341,7 @@ fun FileExplorerScreen(
 
 @Composable
 private fun FileBrowserPage(
+    snackbars: SnackbarHostState,
     currentPath: String,
     drives: List<DriveInfo>,
     files: List<FileItem>,
@@ -376,9 +369,7 @@ private fun FileBrowserPage(
     onCut: (FileItem) -> Unit,
     onProperties: (FileItem) -> Unit,
     onDelete: (FileItem) -> Unit,
-    ) {
-    val snackbars = remember { SnackbarHostState() }
-
+) {
     Scaffold(
         topBar = {
             AppTopBar(

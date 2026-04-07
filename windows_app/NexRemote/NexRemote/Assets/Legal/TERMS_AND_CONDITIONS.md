@@ -1,37 +1,44 @@
 # NexRemote Terms and Conditions
 
-Last Updated: April 5, 2026
+Last Updated: April 8, 2026
 
-These Terms and Conditions explain the practical conditions for installing and operating NexRemote by Neural Nexus Studios.
+These Terms and Conditions describe the practical operating conditions for installing, configuring, and using NexRemote by Neural Nexus Studios.
 
-1. Eligible Use
+## 1. Eligible Installation And Operation
 
-Install NexRemote only on Windows devices that you own, administer, or are expressly allowed to manage. Do not deploy it in environments where remote control software is prohibited by policy.
+Install and operate NexRemote only on Windows devices that you own, administer, or are expressly allowed to manage. Do not use the product where remote-control or remote-management software is prohibited by policy or law.
 
-2. First-Run Setup
+## 2. First-Run Requirements
 
-On first use, NexRemote requires acceptance of its legal documents and explicit consent before sensitive capabilities are enabled. If you decline those prompts, the application will limit or deny access to affected features.
+Before full use, NexRemote may require:
 
-3. Trusted Devices
+- Acceptance of the current legal documents
+- Local consent for network listening or related remote-control behavior
+- Consent for webcam or other sensitive capabilities where applicable
+- Platform-level permissions or approvals shown by Windows, Android, or related system components
 
-Pairing and trusted-device records are stored locally on the PC. You should regularly review trusted devices and remove any device that is lost, replaced, no longer used, or no longer authorized.
+If required permissions or approvals are declined, affected features should remain unavailable.
 
-4. Background Operation
+## 3. Trusted Devices And Pairing
 
-If you allow tray-based background execution, NexRemote may continue to listen for approved local-device connections while the main window is hidden. You can revoke that consent later from the app.
+Pairing information and trusted-device records are stored locally. You should review trusted devices regularly and remove any device that is no longer yours, no longer authorized, lost, replaced, or no longer needed.
 
-5. Camera And Screen Features
+## 4. Background Availability
 
-Camera and screen features are intended for deliberate, user-approved sessions. If Windows privacy settings or app-level consent deny access, NexRemote should not capture or stream those surfaces.
+If you enable tray or background availability, NexRemote may continue listening for approved device connections while the main window is hidden. You remain responsible for deciding whether background availability is appropriate for your device and environment.
 
-6. Driver-Dependent Features
+## 5. Camera, Screen, File, Clipboard, And Task Features
 
-Virtual gamepad compatibility may depend on external components such as ViGEmBus. Those components are separate from the core MSIX package and remain subject to their own licenses, installers, and platform limitations.
+Features that expose screen content, camera content, file content, clipboard content, or process information are intended for deliberate and authorized remote sessions only. If system privacy settings, app settings, or local consent do not allow access, NexRemote should not use those capabilities.
 
-7. Data Handling
+## 6. Driver And Platform Dependencies
 
-NexRemote does not require an account to operate locally. Settings, logs, certificates, and trusted-device metadata are stored on the local device unless you export or move them yourself.
+Some features depend on Windows components, Android permissions, ADB workflows, or external drivers such as ViGEmBus. Those dependencies are separate from the core app package and may fail, change, or require separate installation or support.
 
-8. Termination Of Use
+## 7. Local Data Handling
 
-You may stop using NexRemote at any time by closing or uninstalling the app and removing any stored pairings or local data that you no longer wish to keep.
+NexRemote does not require an account for core local operation. Settings, certificates, trusted-device metadata, and related diagnostic data are stored locally unless you choose to move, export, or synchronize them yourself.
+
+## 8. Ending Use
+
+You may stop using NexRemote at any time by closing or uninstalling the app and removing stored pairings, local settings, or other local data that you no longer wish to retain.

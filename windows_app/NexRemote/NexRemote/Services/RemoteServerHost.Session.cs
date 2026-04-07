@@ -29,6 +29,10 @@ public sealed partial class RemoteServerHost
         public int ScreenQuality { get; set; } = 70;
         public string ScreenResolution { get; set; } = "native";
         public int ScreenPreferredMonitor { get; set; }
+        public bool ScreenAudioEnabled { get; set; }
+        public ScreenAudioFormatInfo? ScreenAudioFormat { get; set; }
+        public ScreenAudioCaptureService.ScreenAudioCaptureStream? ScreenAudioStream { get; set; }
+        public CancellationTokenSource? ScreenAudioCts { get; set; }
         public ConcurrentDictionary<int, CancellationTokenSource> ScreenTasks { get; } = new();
         public ConcurrentDictionary<int, CancellationTokenSource> CameraTasks { get; } = new();
         public ConcurrentDictionary<int, bool> ActiveCameras { get; } = new();
@@ -106,6 +110,18 @@ public sealed partial class RemoteServerHost
                     cts.Dispose();
                 }
             }
+
+            if (ScreenAudioCts is not null)
+            {
+                ScreenAudioCts.Cancel();
+                ScreenAudioCts.Dispose();
+                ScreenAudioCts = null;
+            }
+
+            ScreenAudioStream?.Dispose();
+            ScreenAudioStream = null;
+            ScreenAudioFormat = null;
+            ScreenAudioEnabled = false;
 
             if (MediaLoopCts is not null)
             {

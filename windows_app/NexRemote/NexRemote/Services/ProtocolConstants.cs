@@ -10,6 +10,7 @@ public static class ProtocolConstants
     public const int ApprovalTimeoutSeconds = 12;
     public const string ScreenFrameHeader = "SCRN";
     public const string CameraFrameHeader = "CAMF";
+    public const string ScreenAudioFrameHeader = "AUDF";
     public const string AuthType = "auth";
     public const string DiscoveryResponseType = "discovery_response";
     public const string AuthSuccessType = "auth_success";

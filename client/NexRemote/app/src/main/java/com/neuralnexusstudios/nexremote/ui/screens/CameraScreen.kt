@@ -44,6 +44,7 @@ fun CameraScreen(
     val frames by appContainer.cameraRepository.frames.collectAsState()
     val selected = remember { mutableStateListOf<Int>() }
     val active by appContainer.cameraRepository.activeCameras.collectAsState()
+    val statusMessage by appContainer.cameraRepository.statusMessage.collectAsState()
     val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
 
     val cameraAvailable = sessionState.connected &&
@@ -109,6 +110,13 @@ fun CameraScreen(
                 )
             }
 
+            if (!statusMessage.isNullOrBlank()) {
+                Text(
+                    text = statusMessage!!,
+                    color = if (active.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Button(
                 onClick = {
                     if (active.isEmpty()) appContainer.cameraRepository.start(selected.toSet())
@@ -120,7 +128,10 @@ fun CameraScreen(
             }
 
             if (frames.isEmpty()) {
-                Text("Select one or more PC cameras, then start streaming.")
+                Text(
+                    if (active.isEmpty()) "Select one or more PC cameras, then start streaming."
+                    else "Waiting for live camera frames from the PC host...",
+                )
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(220.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(frames.entries.toList(), key = { it.key }) { entry ->

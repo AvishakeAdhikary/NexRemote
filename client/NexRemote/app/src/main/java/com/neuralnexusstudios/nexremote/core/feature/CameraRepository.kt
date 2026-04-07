@@ -21,10 +21,12 @@ class CameraRepository(private val connectionRepository: NexRemoteConnectionRepo
     private val _cameras = MutableStateFlow<List<CameraInfo>>(emptyList())
     private val _frames = MutableStateFlow<Map<Int, ByteArray>>(emptyMap())
     private val _activeCameras = MutableStateFlow<Set<Int>>(emptySet())
+    private val _statusMessage = MutableStateFlow<String?>(null)
 
     val cameras: StateFlow<List<CameraInfo>> = _cameras
     val frames: StateFlow<Map<Int, ByteArray>> = _frames
     val activeCameras: StateFlow<Set<Int>> = _activeCameras
+    val statusMessage: StateFlow<String?> = _statusMessage
 
     init {
         scope.launch {
@@ -32,6 +34,7 @@ class CameraRepository(private val connectionRepository: NexRemoteConnectionRepo
                 if (payload.string("type") == "camera") {
                     when (payload.string("action")) {
                         "camera_list" -> {
+                            _statusMessage.value = null
                             _cameras.value = payload["cameras"]?.jsonArray?.map { item ->
                                 item.jsonObject.let {
                                     CameraInfo(
@@ -41,8 +44,36 @@ class CameraRepository(private val connectionRepository: NexRemoteConnectionRepo
                                 }
                             }.orEmpty()
                         }
+                        "started" -> {
+                            val index = payload.int("camera_index") ?: return@collect
+                            _activeCameras.value = setOf(index)
+                            _statusMessage.value = null
+                        }
                         "multi_started" -> {
                             _activeCameras.value = payload["camera_indices"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull }?.toSet().orEmpty()
+                            _statusMessage.value = null
+                        }
+                        "stopped" -> {
+                            val index = payload.int("camera_index") ?: return@collect
+                            _activeCameras.update { it - index }
+                            _frames.update { it - index }
+                            _statusMessage.value = "Camera ${index + 1} stopped."
+                        }
+                        "stopped_all" -> {
+                            _activeCameras.value = emptySet()
+                            _frames.value = emptyMap()
+                            _statusMessage.value = "Camera streaming stopped."
+                        }
+                        "error", "permission_required" -> {
+                            val index = payload.int("camera_index")
+                            if (index != null) {
+                                _activeCameras.update { it - index }
+                                _frames.update { it - index }
+                            } else {
+                                _frames.value = emptyMap()
+                                _activeCameras.value = emptySet()
+                            }
+                            _statusMessage.value = payload.cameraStatusMessage()
                         }
                     }
                 }
@@ -58,10 +89,14 @@ class CameraRepository(private val connectionRepository: NexRemoteConnectionRepo
         }
     }
 
-    fun requestCameras() = connectionRepository.sendMessage(mapOf("type" to "camera", "action" to "list_cameras"))
+    fun requestCameras() {
+        _statusMessage.value = null
+        connectionRepository.sendMessage(mapOf("type" to "camera", "action" to "list_cameras"))
+    }
 
     fun start(selected: Set<Int>) {
-        _activeCameras.value = selected
+        _statusMessage.value = null
+        _frames.update { current -> current.filterKeys { it in selected } }
         if (selected.size <= 1) {
             connectionRepository.sendMessage(mapOf("type" to "camera", "action" to "start", "camera_index" to (selected.firstOrNull() ?: 0)))
         } else {
@@ -71,6 +106,26 @@ class CameraRepository(private val connectionRepository: NexRemoteConnectionRepo
 
     fun stop() {
         _activeCameras.value = emptySet()
+        _frames.value = emptyMap()
+        _statusMessage.value = "Camera streaming stopped."
         connectionRepository.sendMessage(mapOf("type" to "camera", "action" to "stop_all"))
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.cameraStatusMessage(): String {
+        string("message")?.let { return it }
+        return when (string("code")) {
+            "device_missing" -> "The selected webcam is no longer available on the PC."
+            "access_denied" -> "Windows denied webcam access on the PC host."
+            "initialize_failed" -> "The PC host could not initialize that webcam."
+            "reader_start_failed" -> "The PC host could not start live frame capture for that webcam."
+            "frame_timeout" -> "The webcam stopped producing live frames."
+            "device_lost" -> "The webcam disconnected or stopped responding."
+            "frame_encode_failed" -> "The PC host captured the webcam but could not encode the frames."
+            else -> if (string("permission") == "camera") {
+                "Camera access still needs approval on the PC host."
+            } else {
+                "Camera streaming failed."
+            }
+        }
     }
 }

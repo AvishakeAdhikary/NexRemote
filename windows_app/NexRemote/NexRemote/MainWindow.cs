@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Muxc = Microsoft.UI.Xaml.Controls;
+using Windows.Graphics;
 using Windows.System;
 using NexRemote.Models;
 using NexRemote.Services;
@@ -21,6 +22,9 @@ namespace NexRemote;
 
 public sealed partial class MainWindow : Window
 {
+    private const int MinimumWindowWidth = 800;
+    private const int MinimumWindowHeight = 600;
+
     private readonly IAppSettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly ITrayIconService _trayIconService;
@@ -34,6 +38,7 @@ public sealed partial class MainWindow : Window
     private readonly List<Window> _secondaryWindows = new();
 
     private bool _allowClose;
+    private bool _customTitleBarEnabled;
     private bool _initialized;
     private bool _cleanupComplete;
     private int _exitRequested;
@@ -67,12 +72,14 @@ public sealed partial class MainWindow : Window
         FirewallProfileBox.Items.Add(new ComboBoxItem { Content = "Public only" });
         FirewallProfileBox.Items.Add(new ComboBoxItem { Content = "All profiles" });
 
+        RootGrid.ActualThemeChanged += OnRootGridActualThemeChanged;
         RootGrid.Loaded += OnLoaded;
         Closed += OnClosed;
 
         var hWnd = WindowNative.GetWindowHandle(this);
         _appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd));
         _appWindow.Closing += OnAppWindowClosing;
+        ConfigureWindowChrome();
     }
 
     public MainWindowViewModel ViewModel { get; }
@@ -93,6 +100,7 @@ public sealed partial class MainWindow : Window
         _initialized = true;
         LogStartup("MainWindow loaded.");
         _themeService.ApplyTheme(this, _settingsService.Current.ThemePreference);
+        UpdateTitleBarColors();
         await ViewModel.InitializeAsync();
         LogStartup("ViewModel initialized.");
         RefreshControlsFromViewModel();
@@ -286,6 +294,12 @@ public sealed partial class MainWindow : Window
 
     private void OnNavigationSelectionChanged(Muxc.NavigationView sender, Muxc.NavigationViewSelectionChangedEventArgs args)
     {
+        if (args.IsSettingsSelected)
+        {
+            SwitchPage("settings");
+            return;
+        }
+
         if (args.SelectedItem is Muxc.NavigationViewItem item && item.Tag is string tag)
         {
             SwitchPage(tag);
@@ -325,6 +339,7 @@ public sealed partial class MainWindow : Window
         await ViewModel.SaveAsync();
         RefreshControlsFromViewModel();
         _themeService.ApplyTheme(this, ViewModel.SelectedThemePreference);
+        UpdateTitleBarColors();
         await StartServerIfNeededAsync();
         _trayIconService.ShowMessage("NexRemote", "Settings saved locally.");
     }
@@ -345,6 +360,7 @@ public sealed partial class MainWindow : Window
     {
         ViewModel.ThemeSelectionIndex = ThemeBox.SelectedIndex;
         _themeService.ApplyTheme(this, ViewModel.SelectedThemePreference);
+        UpdateTitleBarColors();
     }
 
     private async void OnOpenSupportClick(object sender, RoutedEventArgs e) => await ViewModel.OpenSupportAsync();
@@ -425,6 +441,7 @@ public sealed partial class MainWindow : Window
 
         _cleanupComplete = true;
         RootGrid.Loaded -= OnLoaded;
+        RootGrid.ActualThemeChanged -= OnRootGridActualThemeChanged;
         Closed -= OnClosed;
         _appWindow.Closing -= OnAppWindowClosing;
         _trayIconService.ShowRequested -= OnTrayShowRequested;
@@ -648,6 +665,7 @@ public sealed partial class MainWindow : Window
         CompatibilityStatusPanel.Children.Add(CreateCompatibilityRow("Gamepad Backend", gamepadBackendReady, ViewModel.GamepadSupportText));
         CompatibilityStatusPanel.Children.Add(CreateCompatibilityRow("ADB Bridge", adbStatus.ToolAvailable, adbStatus.Reason));
         CompatibilityStatusPanel.Children.Add(CreateCompatibilityRow("ADB Reverse", adbStatus.ReverseActive, adbStatus.Reason));
+        CompatibilityViGemGuideButton.Visibility = gamepadBackendReady ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private async void OnDisconnectClientClick(object sender, RoutedEventArgs e)
@@ -777,6 +795,65 @@ public sealed partial class MainWindow : Window
             XamlRoot = RootGrid.XamlRoot,
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.WrapWholeWords, Width = 420 }
         };
+
+    private void ConfigureWindowChrome()
+    {
+        if (_appWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = MinimumWindowWidth;
+            presenter.PreferredMinimumHeight = MinimumWindowHeight;
+        }
+
+        if (!AppWindowTitleBar.IsCustomizationSupported())
+        {
+            TitleBarHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _customTitleBarEnabled = true;
+        TitleBarHost.Visibility = Visibility.Visible;
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+
+        var titleBar = _appWindow.TitleBar;
+        titleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+        UpdateTitleBarColors();
+    }
+
+    private void OnRootGridActualThemeChanged(FrameworkElement sender, object args)
+    {
+        UpdateTitleBarColors();
+    }
+
+    private void UpdateTitleBarColors()
+    {
+        if (!_customTitleBarEnabled)
+        {
+            return;
+        }
+
+        var darkTheme = RootGrid.ActualTheme == ElementTheme.Dark ||
+                        (RootGrid.ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark);
+
+        var foreground = darkTheme ? Colors.White : ColorHelper.FromArgb(0xFF, 0x1F, 0x23, 0x28);
+        var mutedForeground = darkTheme ? ColorHelper.FromArgb(0xCC, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0xCC, 0x38, 0x3A, 0x40);
+        var hoverBackground = darkTheme ? ColorHelper.FromArgb(0x20, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x12, 0x00, 0x00, 0x00);
+        var pressedBackground = darkTheme ? ColorHelper.FromArgb(0x30, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x1E, 0x00, 0x00, 0x00);
+
+        var titleBar = _appWindow.TitleBar;
+        titleBar.BackgroundColor = Colors.Transparent;
+        titleBar.ForegroundColor = foreground;
+        titleBar.InactiveBackgroundColor = Colors.Transparent;
+        titleBar.InactiveForegroundColor = mutedForeground;
+        titleBar.ButtonBackgroundColor = Colors.Transparent;
+        titleBar.ButtonForegroundColor = foreground;
+        titleBar.ButtonHoverBackgroundColor = hoverBackground;
+        titleBar.ButtonHoverForegroundColor = foreground;
+        titleBar.ButtonPressedBackgroundColor = pressedBackground;
+        titleBar.ButtonPressedForegroundColor = foreground;
+        titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        titleBar.ButtonInactiveForegroundColor = mutedForeground;
+    }
 
     private static MicaBackdrop CreateMicaAltBackdrop()
     {

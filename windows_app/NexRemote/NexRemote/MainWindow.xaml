@@ -8,10 +8,75 @@
     mc:Ignorable="d">
 
     <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border
+            x:Name="TitleBarHost"
+            Grid.Row="0"
+            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid
+                x:Name="AppTitleBar"
+                Height="48"
+                Padding="16,0,12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel
+                    Grid.Column="0"
+                    Orientation="Horizontal"
+                    Spacing="12"
+                    VerticalAlignment="Center">
+                    <Border
+                        Width="28"
+                        Height="28"
+                        CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                        <Image
+                            Width="18"
+                            Height="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Source="Assets/Brand/logo.png"
+                            Stretch="Uniform" />
+                    </Border>
+                    <StackPanel Spacing="0" VerticalAlignment="Center">
+                        <TextBlock
+                            Text="NexRemote"
+                            FontSize="14"
+                            FontWeight="SemiBold" />
+                        <TextBlock
+                            Style="{StaticResource MutedBodyTextStyle}"
+                            Text="Windows Host"
+                            FontSize="11" />
+                    </StackPanel>
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource MutedBodyTextStyle}"
+                        Text="Secure remote control and streaming"
+                        FontSize="12" />
+                </StackPanel>
+
+                
+            </Grid>
+        </Border>
+
         <muxc:NavigationView
             x:Name="RootNavigationView"
+            Grid.Row="1"
             IsBackButtonVisible="Collapsed"
             IsPaneToggleButtonVisible="True"
+            IsSettingsVisible="True"
             OpenPaneLength="248"
             SelectionChanged="OnNavigationSelectionChanged">
             <muxc:NavigationView.Header>
@@ -25,7 +90,6 @@
                 <muxc:NavigationViewItem x:Name="DashboardNavItem" Content="Dashboard" Icon="Home" Tag="dashboard" IsSelected="True" />
                 <muxc:NavigationViewItem Content="Devices" Icon="Contact" Tag="devices" />
                 <muxc:NavigationViewItem Content="Compatibility" Icon="Accept" Tag="compatibility" />
-                <muxc:NavigationViewItem Content="Settings" Icon="Setting" Tag="settings" />
                 <muxc:NavigationViewItem Content="Legal" Icon="Document" Tag="legal" />
             </muxc:NavigationView.MenuItems>
 
@@ -129,6 +193,13 @@
                                 <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Compatibility" />
                                 <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="Everything the host depends on to provide a clean experience for pairing, input, streaming, and transport." TextWrapping="WrapWholeWords" />
                                 <StackPanel x:Name="CompatibilityStatusPanel" Spacing="12" />
+                                <StackPanel x:Name="CompatibilityActionsPanel" Orientation="Horizontal" Spacing="12">
+                                    <Button
+                                        x:Name="CompatibilityViGemGuideButton"
+                                        Click="OnOpenViGemGuideClick"
+                                        Content="Open ViGEm Guide"
+                                        Visibility="Collapsed" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -192,10 +263,9 @@
                         <Border Style="{StaticResource SurfaceCardStyle}">
                             <StackPanel Spacing="12">
                                 <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="Support Me" />
-                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="If NexRemote is useful to you, you can support the project directly. Compatibility and setup guides live separately so this page stays focused on support." TextWrapping="WrapWholeWords" />
+                                <TextBlock Style="{StaticResource MutedBodyTextStyle}" Text="If NexRemote is useful to you, you can support the project directly. Compatibility, permissions, and controller setup guides now live on the Compatibility page so support stays focused on the project itself." TextWrapping="WrapWholeWords" />
                                 <StackPanel Orientation="Horizontal" Spacing="12">
                                     <Button Click="OnOpenSupportClick" Style="{StaticResource AccentActionButtonStyle}" Content="Support Me" />
-                                    <Button Click="OnOpenViGemGuideClick" Content="Open ViGEm Guide" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

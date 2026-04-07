@@ -41,6 +41,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
     private readonly TaskManagerService _taskManagerService = new();
     private readonly MediaControlService _mediaControlService = new();
     private readonly ScreenCaptureService _screenCaptureService = new();
+    private readonly ScreenAudioCaptureService _screenAudioCaptureService = new();
     private readonly CameraCaptureService _cameraCaptureService = new();
     private readonly ConcurrentDictionary<string, RemoteClientSession> _sessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
@@ -116,6 +117,7 @@ public sealed partial class RemoteServerHost : IRemoteServer
         var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady() && _gamepadTransportService.IsReady;
         UpdateCapabilities(gamepadAvailable, _gamepadMode);
         Capabilities.Gamepad = gamepadAvailable;
+        Capabilities.ScreenAudioStreaming = _screenAudioCaptureService.IsSupported;
         Capabilities.CameraStreaming = Settings.CameraAccessConsentGranted;
         Capabilities.Clipboard = true;
     }
@@ -403,6 +405,18 @@ public sealed partial class RemoteServerHost : IRemoteServer
         return fallback;
     }
 
+    private static bool ReadBoolean(JsonElement element, string propertyName, bool fallback = false)
+    {
+        if (element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var prop) &&
+            prop.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            return prop.GetBoolean();
+        }
+
+        return fallback;
+    }
+
     private static List<int> ReadIntArray(JsonElement element, string propertyName)
     {
         var result = new List<int>();
@@ -429,12 +443,20 @@ public sealed partial class RemoteServerHost : IRemoteServer
         var gamepadAvailable = _gamepadDriverService.IsNativeTransportReady() && _gamepadTransportService.IsReady;
         var gamepadDriverInstalled = _gamepadDriverService.IsViGEmBusInstalled();
         var adbStatus = _adbBridgeService.CurrentStatus;
+        var screenAudioAvailable = _screenAudioCaptureService.TryGetAvailability(out var screenAudioReason);
 
         return new Dictionary<string, FeatureStatusInfo>(StringComparer.OrdinalIgnoreCase)
         {
             ["touchpad"] = Available("Remote pointer and keyboard control are ready."),
             ["media_control"] = Available("Media control is ready."),
             ["screen_share"] = Available("Screen sharing is ready."),
+            ["screen_audio"] = screenAudioAvailable
+                ? Available("Screen-share audio is ready.")
+                : Unavailable(
+                    string.IsNullOrWhiteSpace(screenAudioReason)
+                        ? "System audio loopback capture is unavailable on this PC."
+                        : $"System audio loopback capture is unavailable: {screenAudioReason}",
+                    "restart_server"),
             ["file_explorer"] = Available("File explorer is ready."),
             ["task_manager"] = Available("Task manager is ready."),
             ["clipboard"] = Available("Clipboard sync is ready."),

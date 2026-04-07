@@ -1,7 +1,4 @@
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text.Json;
@@ -23,6 +20,7 @@ public sealed partial class RemoteServerHost
                 session.ScreenFps = Math.Max(1, ReadInt32(message, "fps", session.ScreenFps));
                 session.ScreenQuality = Math.Clamp(ReadInt32(message, "quality", session.ScreenQuality), 1, 100);
                 session.ScreenResolution = GetString(message, "resolution", session.ScreenResolution);
+                session.ScreenAudioEnabled = ReadBoolean(message, "audio_enabled", session.ScreenAudioEnabled);
 
                 var indices = ReadIntArray(message, "display_indices");
                 if (indices.Count == 0)
@@ -35,12 +33,25 @@ public sealed partial class RemoteServerHost
                     StartScreenStream(session, index, cancellationToken);
                 }
 
+                if (session.ScreenAudioEnabled)
+                {
+                    await StartScreenAudioStreamAsync(session, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await StopScreenAudioStreamAsync(session, sendUpdate: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+
                 break;
             }
             case "stop":
             {
                 var stopIndex = message.TryGetProperty("display_index", out var prop) && prop.TryGetInt32(out var index) ? (int?)index : null;
                 StopScreenStreams(session, stopIndex);
+                if (!stopIndex.HasValue || session.ScreenTasks.IsEmpty)
+                {
+                    await StopScreenAudioStreamAsync(session, sendUpdate: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
                 break;
             }
             case "set_quality":
@@ -54,6 +65,17 @@ public sealed partial class RemoteServerHost
                 break;
             case "set_monitor":
                 session.ScreenPreferredMonitor = ReadInt32(message, "monitor_index", session.ScreenPreferredMonitor);
+                break;
+            case "set_audio_enabled":
+                session.ScreenAudioEnabled = ReadBoolean(message, "audio_enabled", session.ScreenAudioEnabled);
+                if (session.ScreenAudioEnabled && !session.ScreenTasks.IsEmpty)
+                {
+                    await StartScreenAudioStreamAsync(session, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await StopScreenAudioStreamAsync(session, sendUpdate: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
                 break;
             case "list_displays":
             {
@@ -75,7 +97,17 @@ public sealed partial class RemoteServerHost
                     active_displays = session.ScreenTasks.Keys.OrderBy(value => value).ToArray(),
                     current_resolution = session.ScreenResolution,
                     current_fps = session.ScreenFps,
-                    current_quality = session.ScreenQuality
+                    current_quality = session.ScreenQuality,
+                    audio_enabled = session.ScreenAudioEnabled,
+                    audio_format = session.ScreenAudioFormat is { } audioFormat
+                        ? new
+                        {
+                            sample_rate = audioFormat.SampleRate,
+                            channels = audioFormat.Channels,
+                            encoding = audioFormat.Encoding,
+                            bytes_per_sample = audioFormat.BytesPerSample
+                        }
+                        : null
                 }, cancellationToken).ConfigureAwait(false);
                 break;
             }
@@ -118,34 +150,65 @@ public sealed partial class RemoteServerHost
             case "start":
             {
                 var index = ReadInt32(message, "camera_index", 0);
+                var startResult = await _cameraCaptureService.TryStartCameraAsync(index, cancellationToken).ConfigureAwait(false);
+                if (!startResult.Started)
+                {
+                        await SendEncryptedAsync(session, new
+                        {
+                            type = "camera",
+                            action = "error",
+                            camera_index = index,
+                            code = startResult.ErrorCode,
+                            message = startResult.ErrorMessage
+                        }, cancellationToken).ConfigureAwait(false);
+                        break;
+                }
+
                 session.ActiveCameras[index] = true;
-                _cameraCaptureService.StartCamera(index);
                 StartCameraStream(session, index, cancellationToken);
                 await SendEncryptedAsync(session, new
                 {
                     type = "camera",
                     action = "started",
                     camera_index = index,
-                    camera_info = _cameraCaptureService.GetCameraInfo(index)
+                    camera_info = _cameraCaptureService.GetCameraInfo(index, startResult.CameraName)
                 }, cancellationToken).ConfigureAwait(false);
                 break;
             }
             case "start_multi":
             {
                 var indices = ReadIntArray(message, "camera_indices");
+                var startedIndices = new System.Collections.Generic.List<int>();
                 foreach (var index in indices)
                 {
+                    var startResult = await _cameraCaptureService.TryStartCameraAsync(index, cancellationToken).ConfigureAwait(false);
+                    if (!startResult.Started)
+                    {
+                        await SendEncryptedAsync(session, new
+                        {
+                            type = "camera",
+                            action = "error",
+                            camera_index = index,
+                            code = startResult.ErrorCode,
+                            message = startResult.ErrorMessage
+                        }, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
                     session.ActiveCameras[index] = true;
-                    _cameraCaptureService.StartCamera(index);
+                    startedIndices.Add(index);
                     StartCameraStream(session, index, cancellationToken);
                 }
 
-                await SendEncryptedAsync(session, new
+                if (startedIndices.Count > 0)
                 {
-                    type = "camera",
-                    action = "multi_started",
-                    camera_indices = indices
-                }, cancellationToken).ConfigureAwait(false);
+                    await SendEncryptedAsync(session, new
+                    {
+                        type = "camera",
+                        action = "multi_started",
+                        camera_indices = startedIndices
+                    }, cancellationToken).ConfigureAwait(false);
+                }
                 break;
             }
             case "stop":
@@ -179,15 +242,29 @@ public sealed partial class RemoteServerHost
                 var index = ReadInt32(message, "camera_index", 0);
                 session.ActiveCameras.Clear();
                 StopCameraStreams(session, null);
+                _cameraCaptureService.StopAll();
+                var startResult = await _cameraCaptureService.TryStartCameraAsync(index, cancellationToken).ConfigureAwait(false);
+                if (!startResult.Started)
+                {
+                    await SendEncryptedAsync(session, new
+                    {
+                        type = "camera",
+                        action = "error",
+                        camera_index = index,
+                        code = startResult.ErrorCode,
+                        message = startResult.ErrorMessage
+                    }, cancellationToken).ConfigureAwait(false);
+                    break;
+                }
+
                 session.ActiveCameras[index] = true;
-                _cameraCaptureService.StartCamera(index);
                 StartCameraStream(session, index, cancellationToken);
                 await SendEncryptedAsync(session, new
                 {
                     type = "camera",
                     action = "camera_changed",
                     camera_index = index,
-                    camera_info = _cameraCaptureService.GetCameraInfo(index)
+                    camera_info = _cameraCaptureService.GetCameraInfo(index, startResult.CameraName)
                 }, cancellationToken).ConfigureAwait(false);
                 break;
             }
@@ -303,7 +380,20 @@ public sealed partial class RemoteServerHost
                     var frame = await _cameraCaptureService.CaptureFrameAsync(cameraIndex, loopCts.Token).ConfigureAwait(false);
                     if (frame.Length == 0)
                     {
-                        frame = CreatePlaceholderCameraFrame(cameraIndex);
+                        session.ActiveCameras.TryRemove(cameraIndex, out _);
+                        var error = _cameraCaptureService.GetLastError(cameraIndex) ?? new CameraErrorInfo(
+                            "frame_timeout",
+                            $"Camera {cameraIndex + 1} stopped because the PC host no longer receives live frames from the webcam.");
+                        _cameraCaptureService.StopCamera(cameraIndex);
+                        await SendEncryptedAsync(session, new
+                        {
+                            type = "camera",
+                            action = "error",
+                            camera_index = cameraIndex,
+                            code = error.Code,
+                            message = error.Message
+                        }, loopCts.Token).ConfigureAwait(false);
+                        break;
                     }
 
                     var payload = BuildBinaryFrame(ProtocolConstants.CameraFrameHeader, (byte)(cameraIndex & 0xFF), frame);
@@ -345,21 +435,95 @@ public sealed partial class RemoteServerHost
         }
     }
 
-    private static byte[] CreatePlaceholderCameraFrame(int cameraIndex)
+    private async Task StartScreenAudioStreamAsync(RemoteClientSession session, CancellationToken cancellationToken)
     {
-        using var bitmap = new Bitmap(640, 360);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.Clear(Color.FromArgb(20, 22, 28));
-        using var titleBrush = new SolidBrush(Color.White);
-        using var bodyBrush = new SolidBrush(Color.FromArgb(190, 190, 198));
-        using var titleFont = new Font("Segoe UI", 28, FontStyle.Bold);
-        using var bodyFont = new Font("Segoe UI", 14);
-        graphics.DrawString($"Camera {cameraIndex}", titleFont, titleBrush, 28, 118);
-        graphics.DrawString("Native camera transport is connected.", bodyFont, bodyBrush, 32, 180);
+        await StopScreenAudioStreamAsync(session, sendUpdate: false, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        using var stream = new MemoryStream();
-        bitmap.Save(stream, ImageFormat.Jpeg);
-        return stream.ToArray();
+        var loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var stream = _screenAudioCaptureService.CreateStream();
+        session.ScreenAudioCts = loopCts;
+        session.ScreenAudioStream = stream;
+
+        stream.CaptureFailed += error =>
+        {
+            session.ScreenAudioEnabled = false;
+            session.ScreenAudioFormat = null;
+            _ = SendEncryptedAsync(session, new
+            {
+                type = "screen_share",
+                action = "audio_error",
+                code = error.Code,
+                message = error.Message
+            }, loopCts.Token);
+        };
+
+        stream.ChunkAvailable += chunk =>
+        {
+            if (loopCts.IsCancellationRequested || session.Socket.State != WebSocketState.Open)
+            {
+                return;
+            }
+
+            var payload = BuildBinaryFrame(ProtocolConstants.ScreenAudioFrameHeader, 0, chunk);
+            _ = session.TrySendBinaryAsync(payload, loopCts.Token);
+        };
+
+        var startResult = stream.Start();
+        if (!startResult.Started || startResult.Format is not { } format)
+        {
+            session.ScreenAudioEnabled = false;
+            session.ScreenAudioFormat = null;
+            stream.Dispose();
+            session.ScreenAudioStream = null;
+            session.ScreenAudioCts?.Cancel();
+            session.ScreenAudioCts?.Dispose();
+            session.ScreenAudioCts = null;
+            await SendEncryptedAsync(session, new
+            {
+                type = "screen_share",
+                action = "audio_error",
+                code = startResult.ErrorCode ?? "audio_start_failed",
+                message = startResult.ErrorMessage ?? "System audio capture could not start."
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        session.ScreenAudioEnabled = true;
+        session.ScreenAudioFormat = format;
+        await SendEncryptedAsync(session, new
+        {
+            type = "screen_share",
+            action = "audio_format",
+            sample_rate = format.SampleRate,
+            channels = format.Channels,
+            encoding = format.Encoding,
+            bytes_per_sample = format.BytesPerSample
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task StopScreenAudioStreamAsync(RemoteClientSession session, bool sendUpdate, CancellationToken cancellationToken)
+    {
+        session.ScreenAudioEnabled = false;
+        session.ScreenAudioFormat = null;
+
+        if (session.ScreenAudioCts is not null)
+        {
+            session.ScreenAudioCts.Cancel();
+            session.ScreenAudioCts.Dispose();
+            session.ScreenAudioCts = null;
+        }
+
+        session.ScreenAudioStream?.Dispose();
+        session.ScreenAudioStream = null;
+
+        if (sendUpdate && session.Socket.State == WebSocketState.Open)
+        {
+            await SendEncryptedAsync(session, new
+            {
+                type = "screen_share",
+                action = "audio_stopped"
+            }, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private Task HandleScreenShareInputAsync(JsonElement message)

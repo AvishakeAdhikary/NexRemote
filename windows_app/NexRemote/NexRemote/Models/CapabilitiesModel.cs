@@ -27,6 +27,9 @@ public sealed class CapabilitiesModel
     [JsonPropertyName("screen_streaming")]
     public bool ScreenStreaming { get; set; } = true;
 
+    [JsonPropertyName("screen_audio_streaming")]
+    public bool ScreenAudioStreaming { get; set; } = true;
+
     [JsonPropertyName("camera_streaming")]
     public bool CameraStreaming { get; set; } = true;
 

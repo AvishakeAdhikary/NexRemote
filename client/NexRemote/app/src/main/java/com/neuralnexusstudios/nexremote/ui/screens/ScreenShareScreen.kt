@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.neuralnexusstudios.nexremote.core.AppContainer
 import com.neuralnexusstudios.nexremote.core.model.DisplayInfo
@@ -60,6 +62,8 @@ fun ScreenShareScreen(
     val displays by appContainer.screenShareRepository.displays.collectAsState()
     val frames by appContainer.screenShareRepository.frames.collectAsState()
     val active by appContainer.screenShareRepository.activeDisplays.collectAsState()
+    val audioEnabled by appContainer.screenShareRepository.audioEnabled.collectAsState()
+    val audioStatusMessage by appContainer.screenShareRepository.audioStatusMessage.collectAsState()
     val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     var fps by remember { mutableIntStateOf(30) }
     var quality by remember { mutableStateOf("medium") }
@@ -73,6 +77,11 @@ fun ScreenShareScreen(
         sessionState.featureStatus["screen_share"]?.available != false
     val screenShareReason = sessionState.featureStatus["screen_share"]?.reason
         ?: if (sessionState.capabilities?.screenStreaming == false) "Screen share is not supported by the PC server." else null
+    val screenAudioAvailable = sessionState.connected &&
+        sessionState.capabilities?.screenAudioStreaming != false &&
+        sessionState.featureStatus["screen_audio"]?.available != false
+    val screenAudioReason = sessionState.featureStatus["screen_audio"]?.reason
+        ?: if (sessionState.capabilities?.screenAudioStreaming == false) "PC audio streaming is not supported by the server." else null
 
     LaunchedEffect(screenShareAvailable) {
         if (screenShareAvailable) {
@@ -193,7 +202,7 @@ fun ScreenShareScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
-                        if (active.isEmpty()) appContainer.screenShareRepository.start(selected.toList(), fps, quality, resolution)
+                        if (active.isEmpty()) appContainer.screenShareRepository.start(selected.toList(), fps, quality, resolution, audioEnabled && screenAudioAvailable)
                         else appContainer.screenShareRepository.stop()
                     },
                     enabled = if (active.isEmpty()) selected.isNotEmpty() && screenShareAvailable else true,
@@ -204,6 +213,31 @@ fun ScreenShareScreen(
                     Text("Interactive")
                     Switch(checked = interactive, onCheckedChange = { interactive = it })
                 }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Text("System audio")
+                Switch(
+                    checked = audioEnabled,
+                    onCheckedChange = { enabled ->
+                        appContainer.screenShareRepository.setAudioEnabled(enabled)
+                    },
+                    enabled = screenAudioAvailable || audioEnabled,
+                )
+            }
+
+            if (!screenAudioAvailable && !screenAudioReason.isNullOrBlank()) {
+                Text(
+                    screenAudioReason,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            if (!audioStatusMessage.isNullOrBlank()) {
+                Text(
+                    audioStatusMessage!!,
+                    color = if (audioEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                )
             }
 
             if (frames.isEmpty()) {
@@ -282,6 +316,7 @@ private fun FullScreenSharePage(
                     onSendInput = onSendInput,
                     modifier = Modifier.fillMaxSize(),
                     fullScreen = true,
+                    transformStateKey = display.index,
                 )
             }
         }
@@ -296,13 +331,24 @@ private fun ScreenFrame(
     onSendInput: (String, Float, Float, Map<String, Any?>) -> Unit,
     modifier: Modifier = Modifier.fillMaxWidth(),
     fullScreen: Boolean = false,
+    transformStateKey: Any? = null,
 ) {
     var lastX by remember { mutableStateOf(0.5f) }
     var lastY by remember { mutableStateOf(0.5f) }
+    var zoomScale by remember(transformStateKey, fullScreen) { mutableStateOf(1f) }
+    var zoomOffset by remember(transformStateKey, fullScreen) { mutableStateOf(Offset.Zero) }
+
+    LaunchedEffect(fullScreen, interactive, transformStateKey) {
+        if (!fullScreen || interactive) {
+            zoomScale = 1f
+            zoomOffset = Offset.Zero
+        }
+    }
 
     val image by rememberJpegImage(frame)
     image?.let { image ->
         val aspectRatio = image.width.toFloat() / image.height.toFloat().coerceAtLeast(1f)
+        val transformEnabled = fullScreen && !interactive
         val contentModifier = if (fullScreen) {
             modifier
         } else {
@@ -312,6 +358,25 @@ private fun ScreenFrame(
         }
         Box(
             modifier = contentModifier
+                .pointerInput(transformStateKey, transformEnabled) {
+                    if (transformEnabled) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val newScale = (zoomScale * zoom).coerceIn(1f, 4f)
+                            val nextOffset = if (newScale <= 1f) {
+                                Offset.Zero
+                            } else {
+                                val maxX = ((size.width * newScale) - size.width) / 2f
+                                val maxY = ((size.height * newScale) - size.height) / 2f
+                                Offset(
+                                    x = (zoomOffset.x + pan.x).coerceIn(-maxX, maxX),
+                                    y = (zoomOffset.y + pan.y).coerceIn(-maxY, maxY),
+                                )
+                            }
+                            zoomScale = newScale
+                            zoomOffset = nextOffset
+                        }
+                    }
+                }
                 .pointerInput(interactive) {
                     if (interactive) {
                         detectTapGestures(
@@ -365,7 +430,19 @@ private fun ScreenFrame(
                     }
                 },
         ) {
-            Image(bitmap = image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            Image(
+                bitmap = image,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = zoomScale
+                        scaleY = zoomScale
+                        translationX = zoomOffset.x
+                        translationY = zoomOffset.y
+                    },
+            )
         }
     }
 }

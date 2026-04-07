@@ -37,6 +37,7 @@ data class ServerCapabilities(
     @SerialName("gamepad_mode") val gamepadMode: String = "xinput",
     @SerialName("gamepad_modes") val gamepadModes: List<String> = emptyList(),
     @SerialName("screen_streaming") val screenStreaming: Boolean = true,
+    @SerialName("screen_audio_streaming") val screenAudioStreaming: Boolean = true,
     @SerialName("camera_streaming") val cameraStreaming: Boolean = true,
     @SerialName("file_transfer") val fileTransfer: Boolean = true,
     val clipboard: Boolean = false,
@@ -115,6 +116,13 @@ data class DisplayInfo(
     val left: Int = 0,
     val top: Int = 0,
     val isPrimary: Boolean = false,
+)
+
+data class ScreenAudioFormat(
+    val sampleRate: Int,
+    val channels: Int,
+    val encoding: String,
+    val bytesPerSample: Int,
 )
 
 data class CameraInfo(

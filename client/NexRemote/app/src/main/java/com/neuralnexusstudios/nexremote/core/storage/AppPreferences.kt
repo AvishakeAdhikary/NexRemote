@@ -2,6 +2,8 @@ package com.neuralnexusstudios.nexremote.core.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
+import android.provider.Settings
 import com.neuralnexusstudios.nexremote.core.model.AppSettings
 import com.neuralnexusstudios.nexremote.core.model.DefaultGamepadLayouts
 import com.neuralnexusstudios.nexremote.core.model.GamepadLayoutConfig
@@ -12,8 +14,9 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 
 class AppPreferences(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("nexremote_prefs", Context.MODE_PRIVATE)
+        appContext.getSharedPreferences("nexremote_prefs", Context.MODE_PRIVATE)
 
     private val json = Json { ignoreUnknownKeys = true }
     private val _settings = MutableStateFlow(loadSettings())
@@ -38,7 +41,7 @@ class AppPreferences(context: Context) {
     }
 
     fun updateDeviceName(value: String) {
-        prefs.edit().putString(KEY_DEVICE_NAME, value.ifBlank { DEFAULT_DEVICE_NAME }).apply()
+        prefs.edit().putString(KEY_DEVICE_NAME, value.ifBlank { resolveInitialDeviceName() }).apply()
         refresh()
     }
 
@@ -94,7 +97,15 @@ class AppPreferences(context: Context) {
         val deviceId = prefs.getString(KEY_DEVICE_ID, null) ?: UUID.randomUUID().toString().also {
             prefs.edit().putString(KEY_DEVICE_ID, it).apply()
         }
-        val deviceName = prefs.getString(KEY_DEVICE_NAME, DEFAULT_DEVICE_NAME) ?: DEFAULT_DEVICE_NAME
+        val resolvedDefaultDeviceName = resolveInitialDeviceName()
+        val storedDeviceName = prefs.getString(KEY_DEVICE_NAME, null)
+        val deviceName = when {
+            storedDeviceName.isNullOrBlank() || storedDeviceName == LEGACY_DEFAULT_DEVICE_NAME -> {
+                prefs.edit().putString(KEY_DEVICE_NAME, resolvedDefaultDeviceName).apply()
+                resolvedDefaultDeviceName
+            }
+            else -> storedDeviceName
+        }
         return AppSettings(
             deviceId = deviceId,
             deviceName = deviceName,
@@ -109,8 +120,37 @@ class AppPreferences(context: Context) {
         )
     }
 
+    private fun resolveInitialDeviceName(): String {
+        val configuredName = runCatching {
+            Settings.Global.getString(appContext.contentResolver, "device_name")
+        }.getOrNull()?.trim().orEmpty()
+        if (configuredName.isNotBlank()) {
+            return configuredName
+        }
+
+        val model = Build.MODEL?.trim().orEmpty()
+        val manufacturer = Build.MANUFACTURER?.trim().orEmpty()
+        val combined = when {
+            model.isBlank() && manufacturer.isBlank() -> ""
+            manufacturer.isBlank() -> model
+            model.isBlank() -> manufacturer
+            model.startsWith(manufacturer, ignoreCase = true) -> model
+            else -> "$manufacturer $model"
+        }
+        if (combined.isNotBlank()) {
+            return combined
+        }
+
+        val device = Build.DEVICE?.trim().orEmpty()
+        if (device.isNotBlank()) {
+            return device
+        }
+
+        return LEGACY_DEFAULT_DEVICE_NAME
+    }
+
     companion object {
-        private const val DEFAULT_DEVICE_NAME = "Android Device"
+        private const val LEGACY_DEFAULT_DEVICE_NAME = "Android Device"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_DEVICE_NAME = "device_name"
         private const val KEY_LAST_SERVER = "last_server"

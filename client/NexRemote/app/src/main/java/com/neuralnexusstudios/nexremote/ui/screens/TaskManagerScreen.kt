@@ -37,10 +37,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -51,11 +49,10 @@ import androidx.compose.ui.unit.dp
 import com.neuralnexusstudios.nexremote.core.AppContainer
 import com.neuralnexusstudios.nexremote.core.model.ProcessInfo
 import com.neuralnexusstudios.nexremote.core.model.SystemInfo
+import com.neuralnexusstudios.nexremote.core.feature.TaskProcessSortKey
 import com.neuralnexusstudios.nexremote.ui.components.AppTopBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private enum class ProcessSortKey { Name, Pid, Cpu, Memory }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,14 +62,15 @@ fun TaskManagerScreen(
 ) {
     val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
-    val processes by appContainer.taskManagerRepository.processes.collectAsState()
+    val processMap by appContainer.taskManagerRepository.processMap.collectAsState()
+    val visibleProcessIds by appContainer.taskManagerRepository.visibleProcessIds.collectAsState()
     val systemInfo by appContainer.taskManagerRepository.systemInfo.collectAsState()
+    val search by appContainer.taskManagerRepository.searchQuery.collectAsState()
+    val sortKey by appContainer.taskManagerRepository.sortKey.collectAsState()
+    val ascending by appContainer.taskManagerRepository.ascending.collectAsState()
     val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     val history = remember { mutableStateListOf<SystemInfo>() }
-    var search by remember { mutableStateOf("") }
-    var sortKey by remember { mutableStateOf(ProcessSortKey.Cpu) }
-    var ascending by remember { mutableStateOf(false) }
-    var showGraphs by remember { mutableStateOf(true) }
+    val showGraphs = remember { androidx.compose.runtime.mutableStateOf(true) }
     val taskManagerAvailable = sessionState.connected && sessionState.featureStatus["task_manager"]?.available != false
     val taskManagerReason = sessionState.featureStatus["task_manager"]?.reason
 
@@ -101,28 +99,13 @@ fun TaskManagerScreen(
         }
     }
 
-    val filtered = processes
-        .filter { it.name.contains(search, ignoreCase = true) }
-        .sortedWith(
-            compareBy<ProcessInfo> {
-                when (sortKey) {
-                    ProcessSortKey.Name -> it.name.lowercase()
-                    ProcessSortKey.Pid -> it.pid
-                    ProcessSortKey.Cpu -> it.cpu
-                    ProcessSortKey.Memory -> it.memory
-                }
-            }.let { comparator ->
-                if (ascending) comparator else comparator.reversed()
-            },
-        )
-
     Scaffold(
         topBar = {
             AppTopBar(
                 title = "Task Manager",
                 onBack = onBack,
                 actions = {
-                    IconButton(onClick = { showGraphs = !showGraphs }) {
+                    IconButton(onClick = { showGraphs.value = !showGraphs.value }) {
                         Icon(Icons.Outlined.BarChart, contentDescription = "Toggle graphs")
                     }
                     IconButton(onClick = {
@@ -157,32 +140,33 @@ fun TaskManagerScreen(
 
             SystemSummaryCard(systemInfo = systemInfo)
 
-            if (showGraphs) {
+            if (showGraphs.value) {
                 ResourceHistoryCard(history = history)
             }
 
             OutlinedTextField(
                 value = search,
-                onValueChange = { search = it },
+                onValueChange = appContainer.taskManagerRepository::updateSearchQuery,
                 label = { Text("Search processes") },
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                SortChip("Name", sortKey == ProcessSortKey.Name) { updateSort(ProcessSortKey.Name, sortKey, ascending) { sortKey = it.first; ascending = it.second } }
-                SortChip("PID", sortKey == ProcessSortKey.Pid) { updateSort(ProcessSortKey.Pid, sortKey, ascending) { sortKey = it.first; ascending = it.second } }
-                SortChip("CPU", sortKey == ProcessSortKey.Cpu) { updateSort(ProcessSortKey.Cpu, sortKey, ascending) { sortKey = it.first; ascending = it.second } }
-                SortChip("Memory", sortKey == ProcessSortKey.Memory) { updateSort(ProcessSortKey.Memory, sortKey, ascending) { sortKey = it.first; ascending = it.second } }
+                SortChip("Name", sortKey == TaskProcessSortKey.Name) { appContainer.taskManagerRepository.updateSort(TaskProcessSortKey.Name) }
+                SortChip("PID", sortKey == TaskProcessSortKey.Pid) { appContainer.taskManagerRepository.updateSort(TaskProcessSortKey.Pid) }
+                SortChip("CPU", sortKey == TaskProcessSortKey.Cpu) { appContainer.taskManagerRepository.updateSort(TaskProcessSortKey.Cpu) }
+                SortChip("Memory", sortKey == TaskProcessSortKey.Memory) { appContainer.taskManagerRepository.updateSort(TaskProcessSortKey.Memory) }
             }
 
             ProcessTableHeader(
                 sortKey = sortKey,
                 ascending = ascending,
-                onSort = { key -> updateSort(key, sortKey, ascending) { sortKey = it.first; ascending = it.second } },
+                onSort = appContainer.taskManagerRepository::updateSort,
             )
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filtered, key = { it.pid }) { process ->
+                items(visibleProcessIds, key = { it }) { pid ->
+                    val process = processMap[pid] ?: return@items
                     ProcessRow(
                         process = process,
                         onEnd = {
@@ -305,9 +289,9 @@ private fun SortChip(
 
 @Composable
 private fun ProcessTableHeader(
-    sortKey: ProcessSortKey,
+    sortKey: TaskProcessSortKey,
     ascending: Boolean,
-    onSort: (ProcessSortKey) -> Unit,
+    onSort: (TaskProcessSortKey) -> Unit,
 ) {
     Card {
         Row(
@@ -316,10 +300,10 @@ private fun ProcessTableHeader(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            HeaderCell("Process", 0.42f, sortKey == ProcessSortKey.Name, ascending) { onSort(ProcessSortKey.Name) }
-            HeaderCell("PID", 0.14f, sortKey == ProcessSortKey.Pid, ascending) { onSort(ProcessSortKey.Pid) }
-            HeaderCell("CPU", 0.18f, sortKey == ProcessSortKey.Cpu, ascending) { onSort(ProcessSortKey.Cpu) }
-            HeaderCell("RAM", 0.18f, sortKey == ProcessSortKey.Memory, ascending) { onSort(ProcessSortKey.Memory) }
+            HeaderCell("Process", 0.42f, sortKey == TaskProcessSortKey.Name, ascending) { onSort(TaskProcessSortKey.Name) }
+            HeaderCell("PID", 0.14f, sortKey == TaskProcessSortKey.Pid, ascending) { onSort(TaskProcessSortKey.Pid) }
+            HeaderCell("CPU", 0.18f, sortKey == TaskProcessSortKey.Cpu, ascending) { onSort(TaskProcessSortKey.Cpu) }
+            HeaderCell("RAM", 0.18f, sortKey == TaskProcessSortKey.Memory, ascending) { onSort(TaskProcessSortKey.Memory) }
             Text("Action", modifier = Modifier.weight(0.18f), style = MaterialTheme.typography.labelLarge)
         }
     }
@@ -371,16 +355,6 @@ private fun ProcessRow(
             }
         }
     }
-}
-
-private fun updateSort(
-    requested: ProcessSortKey,
-    current: ProcessSortKey,
-    ascending: Boolean,
-    apply: (Pair<ProcessSortKey, Boolean>) -> Unit,
-) {
-    val nextAscending = if (requested == current) !ascending else requested == ProcessSortKey.Name || requested == ProcessSortKey.Pid
-    apply(requested to nextAscending)
 }
 
 private fun cpuColor(cpu: Double): Color = when {
