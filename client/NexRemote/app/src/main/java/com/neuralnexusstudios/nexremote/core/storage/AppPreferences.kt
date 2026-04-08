@@ -5,8 +5,10 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
 import com.neuralnexusstudios.nexremote.core.model.AppSettings
+import com.neuralnexusstudios.nexremote.core.model.BuiltInGamepadLayoutIds
 import com.neuralnexusstudios.nexremote.core.model.DefaultGamepadLayouts
 import com.neuralnexusstudios.nexremote.core.model.GamepadLayoutConfig
+import com.neuralnexusstudios.nexremote.core.model.normalizeForStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.encodeToString
@@ -74,9 +76,13 @@ class AppPreferences(context: Context) {
         val encoded = prefs.getString(KEY_LAYOUTS_JSON, null)
         val activeLayoutId = prefs.getString(KEY_ACTIVE_LAYOUT_ID, DefaultGamepadLayouts.builtIns.first().id)
             ?: DefaultGamepadLayouts.builtIns.first().id
-        val customLayouts = encoded?.let {
+        val decodedCustomLayouts = encoded?.let {
             runCatching { json.decodeFromString<List<GamepadLayoutConfig>>(it) }.getOrDefault(emptyList())
         }.orEmpty()
+        val customLayouts = decodedCustomLayouts.map { it.normalizeForStorage() }
+        if (customLayouts != decodedCustomLayouts) {
+            prefs.edit().putString(KEY_LAYOUTS_JSON, json.encodeToString(customLayouts)).apply()
+        }
         val merged = DefaultGamepadLayouts.builtIns.filterNot { builtIn ->
             customLayouts.any { it.id == builtIn.id }
         } + customLayouts
@@ -85,8 +91,8 @@ class AppPreferences(context: Context) {
 
     fun saveLayouts(layouts: List<GamepadLayoutConfig>, activeLayoutId: String) {
         val customLayouts = layouts.filterNot { layout ->
-            DefaultGamepadLayouts.builtIns.any { it.id == layout.id }
-        }
+            BuiltInGamepadLayoutIds.contains(layout.id)
+        }.map { it.normalizeForStorage() }
         prefs.edit()
             .putString(KEY_LAYOUTS_JSON, json.encodeToString(customLayouts))
             .putString(KEY_ACTIVE_LAYOUT_ID, activeLayoutId)

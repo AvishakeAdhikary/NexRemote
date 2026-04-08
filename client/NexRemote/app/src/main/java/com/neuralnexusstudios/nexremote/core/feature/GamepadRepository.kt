@@ -3,6 +3,7 @@ package com.neuralnexusstudios.nexremote.core.feature
 import com.neuralnexusstudios.nexremote.core.model.DefaultGamepadLayouts
 import com.neuralnexusstudios.nexremote.core.model.GamepadLayoutConfig
 import com.neuralnexusstudios.nexremote.core.model.MacroStep
+import com.neuralnexusstudios.nexremote.core.model.normalizeForStorage
 import com.neuralnexusstudios.nexremote.core.network.NexRemoteConnectionRepository
 import com.neuralnexusstudios.nexremote.core.storage.AppPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,16 +30,23 @@ class GamepadRepository(
     }
 
     fun setActive(layout: GamepadLayoutConfig) {
-        preferences.saveLayouts(_layouts.value, layout.id)
-        _activeLayout.value = layout
-        sendModeChange(layout.mode)
+        val normalized = layout.normalizeForStorage()
+        val updated = _layouts.value.map { if (it.id == normalized.id) normalized else it }
+        _layouts.value = updated
+        preferences.saveLayouts(updated, normalized.id)
+        _activeLayout.value = normalized
+        sendModeChange(normalized.mode)
     }
 
     fun saveLayout(layout: GamepadLayoutConfig) {
+        val normalized = layout.normalizeForStorage()
         val updated = _layouts.value.toMutableList()
-        val index = updated.indexOfFirst { it.id == layout.id }
-        if (index >= 0) updated[index] = layout else updated += layout
+        val index = updated.indexOfFirst { it.id == normalized.id }
+        if (index >= 0) updated[index] = normalized else updated += normalized
         _layouts.value = updated
+        if (_activeLayout.value.id == normalized.id) {
+            _activeLayout.value = normalized
+        }
         preferences.saveLayouts(updated, _activeLayout.value.id)
     }
 
