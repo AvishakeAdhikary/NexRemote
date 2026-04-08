@@ -1,6 +1,16 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup />
+  <PropertyGroup>
+    <Source>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</Source>
+    <SmallTileSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</SmallTileSource>
+    <MediumTileSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</MediumTileSource>
+    <WideTileSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</WideTileSource>
+    <LargeTileSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</LargeTileSource>
+    <AppIconSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</AppIconSource>
+    <SplashScreenSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</SplashScreenSource>
+    <PackageLogoSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</PackageLogoSource>
+    <BadgeLogoSource>C:\Projects\NexRemote\windows_app\NexRemote\NexRemote\Assets\Brand\logo.png</BadgeLogoSource>
+  </PropertyGroup>
   <ItemGroup>
     <None Update="App.xaml">
       <SubType>Designer</SubType>

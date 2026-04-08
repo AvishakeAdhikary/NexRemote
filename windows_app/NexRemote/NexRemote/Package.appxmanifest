@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
@@ -6,11 +6,12 @@
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap desktop desktop2 rescap">
+  xmlns:uap18="http://schemas.microsoft.com/appx/manifest/uap/windows10/18"
+  IgnorableNamespaces="uap desktop desktop2 rescap uap18">
 
   <Identity
-    Name="100bf35e-9afa-4a19-b42e-098b7a9bf342"
-    Publisher="CN=avhis"
+    Name="NeuralNexusStudios.NexRemote"
+    Publisher="CN=8559855F-6955-4418-A6D8-835C3238CF34"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="100bf35e-9afa-4a19-b42e-098b7a9bf342" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
@@ -34,15 +35,17 @@
   <Applications>
     <Application Id="App"
       Executable="NexRemote.exe"
-      EntryPoint="$targetentrypoint$">
+      EntryPoint="$targetentrypoint$" uap18:RuntimeBehavior="packagedClassicApp">
       <uap:VisualElements
         DisplayName="NexRemote"
         Description="NexRemote by Neural Nexus Studios"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
-        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png"  Square71x71Logo="Assets\SmallTile.png" Square310x310Logo="Assets\LargeTile.png">
+        </uap:DefaultTile >
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
+        <uap:LockScreen BadgeLogo="Assets\BadgeLogo.png" Notification="badgeAndTileText"/>
       </uap:VisualElements>
 
       <Extensions>
@@ -71,6 +74,11 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClientServer"/>
+    <Capability Name="internetClient"/>
+    <Capability Name="privateNetworkClientServer"/>
+    <uap:Capability Name="musicLibrary"/>
+    <uap:Capability Name="picturesLibrary"/>
     <DeviceCapability Name="webcam" />
   </Capabilities>
 </Package>

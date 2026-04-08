@@ -1,49 +1,68 @@
-NexRemote Terms of Service
+NexRemote Android Terms of Service
 
-Effective date: April 4, 2026
-Developer: Neural Nexus Studios
-Application: NexRemote
+Last Updated: April 8, 2026
 
-1. Agreement
-By downloading, installing, accessing, or using NexRemote, you agree to these Terms of Service. If you do not agree, do not use the application.
+Developer and publisher: Neural Nexus Studios
+Principal place of business: Kolkata, West Bengal, India
+Website: https://avishakeadhikary.github.io/Neural-Nexus-Studios/
+Support and legal contact: neural.nex.studios@gmail.com
 
-2. What NexRemote is
-NexRemote is an Android application developed by Neural Nexus Studios. It is designed to connect your Android device to a compatible NexRemote PC server that you control so that you can remotely send inputs, view supported PC-side content, and manage supported features on that PC.
+1. Acceptance
+By downloading, installing, launching, accessing, or using the NexRemote Android app, you agree to these Terms of Service. If you do not agree, do not use the app.
 
-3. Separate PC server requirement
-NexRemote requires a separate compatible PC server. The mobile app does not provide remote access to third-party systems by itself. You are responsible for operating and securing the PC server you choose to use with the app.
+2. Product scope
+The Android app is intended to connect your Android device to a compatible NexRemote Windows host that you own, administer, or are expressly authorized to manage.
+
+3. Separate Windows host requirement
+The Android app depends on a separate compatible NexRemote Windows host. The Android app does not itself grant access to third-party systems without a host that you select and connect.
 
 4. Authorized use only
-You may use NexRemote only with devices, systems, files, content, accounts, and networks that you own or are authorized to access and control. You must not use NexRemote to:
+You may use NexRemote only with devices, systems, sessions, files, and data that you own or are expressly authorized to access and control.
 
-- gain or attempt to gain unauthorized access
-- monitor, harass, deceive, or harm other people
-- violate privacy, computer misuse, employment, consumer protection, or intellectual-property laws
-- disrupt, damage, or interfere with devices, systems, or networks
+You must not use the app to:
 
-5. Your responsibility for remote actions and content
-You are responsible for the commands you send and the content you access through NexRemote, including screen sharing, camera streaming, file browsing, file editing, media control, and process management. Before using these features, make sure you trust the connected PC server and understand the effect of your actions.
+- gain unauthorized access to a device, network, file, session, or account
+- monitor, record, or stream another person or device without authorization
+- capture screen, camera, clipboard, audio, or file content without authorization
+- stalk, harass, impersonate, deceive, or harm another person
+- distribute malware, steal credentials, evade security controls, or facilitate unlawful conduct
 
-6. Permissions, connections, and device setup
-Certain features may require Android permissions, USB debugging, compatible USB configuration, local-network access, certificates, or other device or server setup. If a required permission or connection state is not available, some features may be limited or unavailable.
+5. Permissions and setup
+Some features may require Android permissions, QR camera access, local-network access, certificate trust, Windows host configuration, optional drivers, or other platform setup. If a required permission or setup step is unavailable, affected features may be limited or unavailable.
 
-7. Privacy
-Your use of NexRemote is also governed by the NexRemote Privacy Policy. Please review that policy to understand how data is accessed, handled, retained, shared, and protected.
+6. Your responsibilities
+You are responsible for:
 
-8. Availability and updates
-Neural Nexus Studios may change, improve, limit, suspend, or discontinue all or part of NexRemote at any time. App performance may depend on Android version, device hardware, network quality, PC server compatibility, certificates, and USB or ADB configuration.
+- protecting physical and account access to your Android device and Windows host
+- reviewing trusted-server state and connection settings
+- evaluating whether secure or insecure transport is appropriate for your network
+- complying with all applicable laws, workplace rules, school rules, and contractual restrictions
 
-9. No warranty
-To the maximum extent permitted by applicable law, NexRemote is provided on an "as is" and "as available" basis, without warranties of any kind, whether express, implied, or statutory.
+7. Free app
+The current version of NexRemote is offered without a subscription fee or in-app purchase for its core use.
 
-10. Limitation of liability
-To the maximum extent permitted by applicable law, Neural Nexus Studios will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of profits, data, business, goodwill, or device functionality arising from or related to your use of NexRemote.
+8. No warranty
+To the maximum extent permitted by applicable law, NexRemote is provided on an "as is" and "as available" basis without warranties of any kind, including warranties of merchantability, fitness for a particular purpose, non-infringement, uninterrupted availability, or compatibility with every device, operating-system version, network, or configuration.
 
-11. Termination
-You may stop using NexRemote at any time by uninstalling it. Neural Nexus Studios may suspend or terminate access to the app or specific features where necessary for legal, security, operational, or policy reasons.
+9. Limitation of liability
+To the maximum extent permitted by applicable law, Neural Nexus Studios and its owners, officers, employees, contractors, and affiliates will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of profits, revenue, goodwill, data, or device functionality arising from or related to the use of NexRemote.
 
-12. Changes to these Terms
-Neural Nexus Studios may update these Terms of Service when the app, laws, or platform requirements change. Updated Terms take effect when published in the app or otherwise made available through official NexRemote distribution materials.
+Nothing in these Terms excludes liability that cannot lawfully be excluded.
 
-13. Contact
-For support or legal inquiries about NexRemote, use the support contact, support email, or support form published by Neural Nexus Studios on the official NexRemote Google Play listing or other official support channels for the app.
+10. Privacy
+Your use of the app is also governed by the NexRemote Privacy Policy.
+
+11. Governing law
+These Terms are governed by the laws of India, except to the extent that mandatory consumer-protection law in your jurisdiction provides otherwise. Any dispute that cannot be resolved informally will be subject to the competent courts located in Kolkata, West Bengal, India, except where applicable law requires another forum.
+
+12. Children
+The app is not directed to children under 13.
+
+13. Changes
+Neural Nexus Studios may update these Terms to reflect product changes, legal requirements, security updates, or platform-policy changes. Updated terms may be published in the app, repository, official website, and/or store materials.
+
+14. Contact
+Neural Nexus Studios
+Kolkata, West Bengal, India
+Email: neural.nex.studios@gmail.com
+Website: https://avishakeadhikary.github.io/Neural-Nexus-Studios/

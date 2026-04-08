@@ -1,44 +1,56 @@
-# NexRemote Terms and Conditions
+# NexRemote Windows Host Terms And Conditions
 
 Last Updated: April 8, 2026
 
-These Terms and Conditions describe the practical operating conditions for installing, configuring, and using NexRemote by Neural Nexus Studios.
+These Terms and Conditions describe the operating conditions for installing, configuring, and using the NexRemote Windows host application.
 
-## 1. Eligible Installation And Operation
+## 1. Installation And Eligibility
 
-Install and operate NexRemote only on Windows devices that you own, administer, or are expressly allowed to manage. Do not use the product where remote-control or remote-management software is prohibited by policy or law.
+Install and use the Windows host only on devices that you own, administer, or are expressly authorized to manage. Do not use the app where remote-control or remote-management software is prohibited by law, policy, or contract.
 
 ## 2. First-Run Requirements
 
-Before full use, NexRemote may require:
+Before full use, the Windows host may require:
 
-- Acceptance of the current legal documents
-- Local consent for network listening or related remote-control behavior
-- Consent for webcam or other sensitive capabilities where applicable
-- Platform-level permissions or approvals shown by Windows, Android, or related system components
+- acceptance of the current legal documents
+- local approval to allow remote access or local network listening
+- Windows privacy approval for sensitive features such as webcam access
+- firewall or security approvals required by the operating system
+- optional installation of external components such as ViGEmBus for some controller features
 
-If required permissions or approvals are declined, affected features should remain unavailable.
+If those approvals are not granted, affected features should remain unavailable or limited.
 
 ## 3. Trusted Devices And Pairing
 
-Pairing information and trusted-device records are stored locally. You should review trusted devices regularly and remove any device that is no longer yours, no longer authorized, lost, replaced, or no longer needed.
+Trusted-device records and related certificate trust data are stored locally on the PC. You should regularly review trusted devices and remove any device that is lost, replaced, no longer used, or no longer authorized.
 
-## 4. Background Availability
+## 4. Background And Startup Behavior
 
-If you enable tray or background availability, NexRemote may continue listening for approved device connections while the main window is hidden. You remain responsible for deciding whether background availability is appropriate for your device and environment.
+If you enable background availability, tray availability, or startup behavior, the Windows host may remain capable of receiving connection attempts while the main window is hidden. You remain responsible for deciding whether this is appropriate for your device and environment.
 
-## 5. Camera, Screen, File, Clipboard, And Task Features
+## 5. Secure And Insecure Connections
 
-Features that expose screen content, camera content, file content, clipboard content, or process information are intended for deliberate and authorized remote sessions only. If system privacy settings, app settings, or local consent do not allow access, NexRemote should not use those capabilities.
+The Windows host supports security features designed to protect local remote sessions. However, if you intentionally use insecure transport or maintain an insecure endpoint for compatibility reasons, traffic on that connection may be less protected. You are responsible for your network choices and any resulting risk.
 
-## 6. Driver And Platform Dependencies
+## 6. Logs And Local Data
 
-Some features depend on Windows components, Android permissions, ADB workflows, or external drivers such as ViGEmBus. Those dependencies are separate from the core app package and may fail, change, or require separate installation or support.
+The app may store settings, trusted-device records, certificates, legal acceptance records, and local logs on the PC. Operational logs are compacted to approximately the most recent 30 days of entries. If audit logging is enabled, audit logs may remain locally until you delete them or uninstall the app.
 
-## 7. Local Data Handling
+## 7. Screen, Camera, File, Clipboard, Audio, And Task Features
 
-NexRemote does not require an account for core local operation. Settings, certificates, trusted-device metadata, and related diagnostic data are stored locally unless you choose to move, export, or synchronize them yourself.
+Features that expose screen content, camera content, audio content, file content, clipboard content, or process information are intended only for deliberate, user-approved sessions involving authorized devices. If Windows privacy settings, app settings, or local consent do not permit access, NexRemote should not use those capabilities.
 
-## 8. Ending Use
+## 8. No Account Requirement
 
-You may stop using NexRemote at any time by closing or uninstalling the app and removing stored pairings, local settings, or other local data that you no longer wish to retain.
+The Windows host does not currently require a Neural Nexus Studios account for its core local operation.
+
+## 9. Ending Use
+
+You may stop using NexRemote at any time by closing or uninstalling the app and deleting local app data, trusted devices, certificates, and logs that you no longer wish to retain.
+
+## 10. Contact
+
+Neural Nexus Studios  
+Kolkata, West Bengal, India  
+Email: neural.nex.studios@gmail.com  
+Website: https://avishakeadhikary.github.io/Neural-Nexus-Studios/

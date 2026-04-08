@@ -1,60 +1,93 @@
-# NexRemote Terms of Service
+# NexRemote Windows Host Terms of Service
 
 Last Updated: April 8, 2026
 
-These Terms of Service govern your use of NexRemote by Neural Nexus Studios, including the Windows host application and compatible client applications.
+These Terms of Service govern your use of the NexRemote Windows host application by Neural Nexus Studios.
 
-## 1. Authorized Use Only
+## 1. Publisher
 
-You may use NexRemote only with devices, accounts, files, and sessions that you own or are expressly authorized to manage. You must comply with applicable law, Microsoft Store policies, platform rules, workplace rules, and any other policies that apply to the systems you access.
+Neural Nexus Studios  
+Kolkata, West Bengal, India  
+Email: neural.nex.studios@gmail.com  
+Website: https://avishakeadhikary.github.io/Neural-Nexus-Studios/
 
-## 2. Intended Product Use
+## 2. Acceptance
 
-NexRemote is intended for legitimate remote-control and device-management scenarios such as:
+By downloading, installing, launching, accessing, or using the NexRemote Windows host application, you agree to these Terms of Service. If you do not agree, do not use the app.
 
-- Remote keyboard, mouse, and touch control
-- Local screen sharing and camera streaming
-- File browsing and file management
-- Task management, media control, and clipboard actions
-- Controller and gamepad input on supported systems
+The app is not directed to children under 13.
 
-These features are intended for transparent, user-approved operation, not covert surveillance or unauthorized access.
+## 3. Authorized Use Only
 
-## 3. Consent And Sensitive Features
+You may use NexRemote only with devices, systems, sessions, files, and data that you own or are expressly authorized to access and control.
 
-You are responsible for reviewing and responding to local prompts, permission requests, privacy settings, and trust prompts shown by NexRemote, Windows, Android, or related platform components. Sensitive features such as remote listeners, tray persistence, webcam access, and certain device-management actions should be used only when you intentionally enable them.
+You must not use NexRemote to:
 
-## 4. Security Responsibilities
+- access or control a device without authorization
+- capture or stream screen, camera, audio, clipboard, file, or process data without authorization
+- stalk, harass, impersonate, deceive, or harm another person
+- violate privacy, computer-misuse, workplace, school, or contractual rules
+- distribute malware, steal credentials, evade security controls, or facilitate unlawful activity
 
-You are responsible for maintaining the security of devices that run NexRemote, including:
+## 4. Product Function
 
-- Protecting physical and account access to those devices
-- Reviewing trusted-device records
-- Removing devices that are lost, replaced, or no longer authorized
-- Disconnecting unknown or suspicious clients
-- Reviewing firewall, certificate, and privacy settings
+The Windows host is designed to receive user-approved NexRemote client connections for legitimate remote-control and device-management scenarios. Features may include remote input, screen sharing, optional screen audio, camera streaming, file management, clipboard-related functions, task management, media control, and optional controller support.
 
-## 5. Prohibited Conduct
+## 5. Permissions And Sensitive Features
 
-You may not use NexRemote to:
+The app may require legal acceptance, Windows privacy settings, local consent, certificate trust decisions, startup choices, or firewall approval before certain features become available.
 
-- Access or control a device without authorization
-- Capture or stream screen, camera, clipboard, file, or input data without authorization
-- Stalk, harass, monitor, or impersonate another person
-- Distribute malware, steal credentials, evade security controls, or violate privacy or computer-misuse laws
+You are responsible for reviewing those prompts and deciding whether to enable features such as:
 
-## 6. Third-Party Components
+- local network listening
+- background or tray availability
+- camera streaming
+- screen sharing
+- file and clipboard operations
+- controller features that may depend on additional components
 
-Some NexRemote features may depend on separate platform capabilities or third-party components, such as ViGEmBus, Windows privacy settings, Android permissions, or ADB-based workflows. Those components remain subject to their own licenses, installation requirements, and platform limitations.
+## 6. Security Responsibilities
 
-## 7. Updates And Compatibility
+You are responsible for:
 
-Neural Nexus Studios may update NexRemote over time to improve functionality, security, or platform compliance. Updates may change compatibility requirements, permissions, UI flows, or supported capabilities.
+- protecting physical and account access to the PC running NexRemote
+- reviewing trusted-device state and removing devices that are no longer authorized
+- evaluating whether secure or insecure connection modes are appropriate for your environment
+- protecting the network on which the app is used
 
-## 8. Warranty Disclaimer And Liability
+## 7. Third-Party Components And Dependencies
 
-To the maximum extent permitted by law, NexRemote is provided on an "as is" and "as available" basis without warranties of uninterrupted availability, merchantability, fitness for a particular purpose, or compatibility with every network, device, driver, or operating-system environment.
+Some features may depend on platform or third-party components, including optional drivers such as ViGEmBus for some controller workflows. Those components are separate from the NexRemote app and may be governed by their own licenses, installation requirements, and limitations.
 
-## 9. Contact
+## 8. Free App
 
-For legal or policy questions related to NexRemote, use the public support or contact channel published with the release page or Microsoft Store listing for your installed version.
+The current version of NexRemote is offered without a subscription fee or in-app purchase for its core use.
+
+## 9. No Warranty
+
+To the maximum extent permitted by applicable law, NexRemote is provided on an "as is" and "as available" basis without warranties of any kind, including warranties of merchantability, fitness for a particular purpose, non-infringement, uninterrupted availability, or compatibility with every hardware, network, or operating-system environment.
+
+## 10. Limitation Of Liability
+
+To the maximum extent permitted by applicable law, Neural Nexus Studios and its owners, officers, employees, contractors, and affiliates will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of profits, revenue, goodwill, data, or device functionality arising from or related to the use of NexRemote.
+
+Nothing in these Terms excludes liability that cannot lawfully be excluded.
+
+## 11. Privacy
+
+Your use of the app is also governed by the NexRemote Privacy Policy.
+
+## 12. Governing Law
+
+These Terms are governed by the laws of India, except to the extent that mandatory consumer-protection law in your jurisdiction provides otherwise. Any dispute that cannot be resolved informally will be subject to the competent courts located in Kolkata, West Bengal, India, except where applicable law requires another forum.
+
+## 13. Changes
+
+Neural Nexus Studios may update these Terms to reflect product changes, legal requirements, security updates, or platform-policy changes. Updated terms take effect when published in the app, repository, official website, and/or relevant store materials.
+
+## 14. Contact
+
+Neural Nexus Studios  
+Kolkata, West Bengal, India  
+Email: neural.nex.studios@gmail.com  
+Website: https://avishakeadhikary.github.io/Neural-Nexus-Studios/
