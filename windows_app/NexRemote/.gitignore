@@ -1,1 +1,8 @@
 .vs/
+
+# Build
+NexRemote/AppPackages/
+NexRemote/BundleArtifacts/
+NexRemote/bin/
+NexRemote/obj/
+NexRemote/x64/

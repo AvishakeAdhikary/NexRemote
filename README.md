@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="windows_app/src/assets/images/logo.png" alt="NexRemote Logo" width="128">
+  <img src="windows_app/NexRemote/NexRemote/Assets/Brand/logo.png" alt="NexRemote Logo" width="128">
 </p>
 
 <h1 align="center">NexRemote</h1>
