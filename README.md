@@ -10,6 +10,12 @@
 </p>
 
 <p align="center">
+  <a href="https://get.microsoft.com/installer/download/9p4rn2kggjxc?referrer=appbadge" target="_self" >
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
+  </a>
+</p>
+
+<p align="center">
   <a href="https://github.com/AvishakeAdhikary/NexRemote/actions"><img src="https://github.com/AvishakeAdhikary/NexRemote/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Android-blue" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
