@@ -24,40 +24,40 @@ env:
   ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
 jobs:
-  windows:
-    name: Windows ${{ matrix.runtime }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runtime: x64
-            artifact: NexRemote-win-x64.zip
-          - runtime: arm64
-            artifact: NexRemote-win-arm64.zip
-          - runtime: x86
-            artifact: NexRemote-win-x86.zip
-    steps:
-      - uses: actions/checkout@v4
+  # windows:
+  #   name: Windows ${{ matrix.runtime }}
+  #   runs-on: windows-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - runtime: x64
+  #           artifact: NexRemote-win-x64.zip
+  #         - runtime: arm64
+  #           artifact: NexRemote-win-arm64.zip
+  #         - runtime: x86
+  #           artifact: NexRemote-win-x86.zip
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
+  #     - name: Setup .NET
+  #       uses: actions/setup-dotnet@v4
+  #       with:
+  #         dotnet-version: 8.0.x
 
-      - name: Build Windows package
-        if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: .\scripts\build.ps1 -Configuration Release -SkipAndroid -WindowsRuntime ${{ matrix.runtime }}
+  #     - name: Build Windows package
+  #       if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
+  #       shell: pwsh
+  #       run: .\scripts\build.ps1 -Configuration Release -SkipAndroid -WindowsRuntime ${{ matrix.runtime }}
 
-      - name: Upload Windows artifact
-        if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-${{ matrix.runtime }}
-          path: dist/windows/${{ matrix.artifact }}
-          if-no-files-found: error
-          retention-days: 14
+  #     - name: Upload Windows artifact
+  #       if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: windows-${{ matrix.runtime }}
+  #         path: dist/windows/${{ matrix.artifact }}
+  #         if-no-files-found: error
+  #         retention-days: 14
 
   android:
     name: Android
@@ -117,11 +117,11 @@ jobs:
       group: nexremote-edge-release
       cancel-in-progress: true
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release
-          pattern: windows-*
-          merge-multiple: true
+      # - uses: actions/download-artifact@v4
+      #   with:
+      #     path: release
+      #     pattern: windows-*
+      #     merge-multiple: true
 
       - uses: actions/download-artifact@v4
         with:
