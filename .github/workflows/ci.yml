@@ -111,7 +111,8 @@ jobs:
   release-edge:
     name: Release Edge
     runs-on: ubuntu-latest
-    needs: [windows, android]
+    # needs: [windows, android]
+    needs: [android]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     concurrency:
       group: nexremote-edge-release
