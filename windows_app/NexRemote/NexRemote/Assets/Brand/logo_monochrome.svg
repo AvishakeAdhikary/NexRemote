@@ -1,0 +1,24 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="2000" height="2000">
+	<style>
+		.s0 { fill: none;stroke: #000000;stroke-width: 12 } 
+		.s1 { fill: none;stroke: #000000;stroke-linecap: square;stroke-width: 9 } 
+	</style>
+	<g id="Icons">
+		<g id="Cross">
+			<path id="Stroke" fill-rule="evenodd" class="s0" d="m250 350c-19.35 0-35-15.64-35-35 0-19.36 15.65-35 35-35 19.36 0 35 15.64 35 35 0 19.36-15.64 35-35 35z"/>
+			<path id="Icon" class="s1" d="m265 300l-30 30m0-30l30 30"/>
+		</g>
+		<g id="Circle">
+			<path id="Stroke" fill-rule="evenodd" class="s0" d="m315 285c-19.36 0-35-15.64-35-35 0-19.35 15.64-35 35-35 19.36 0 35 15.65 35 35 0 19.36-15.64 35-35 35z"/>
+			<path id="Icon" fill-rule="evenodd" class="s1" d="m315 265c-8.3 0-15-6.7-15-15 0-8.29 6.7-15 15-15 8.3 0 15 6.71 15 15 0 8.3-6.7 15-15 15z"/>
+		</g>
+		<g id="Square">
+			<path id="Stroke" fill-rule="evenodd" class="s0" d="m185 285c-19.35 0-35-15.64-35-35 0-19.35 15.65-35 35-35 19.35 0 35 15.65 35 35 0 19.36-15.65 35-35 35z"/>
+			<path id="Icon" fill-rule="evenodd" class="s1" d="m170 235h30v30h-30z"/>
+		</g>
+		<g id="Triangle">
+			<path id="Stroke" fill-rule="evenodd" class="s0" d="m250 220c-19.35 0-35-15.65-35-35 0-19.35 15.65-35 35-35 19.36 0 35 15.65 35 35 0 19.35-15.64 35-35 35z"/>
+			<path id="Icon" fill-rule="evenodd" class="s1" d="m250 165l-15 30h30z"/>
+		</g>
+	</g>
+</svg>
