@@ -11,6 +11,6 @@ class NexRemoteInstrumentedTest {
     @Test
     fun appContext_usesNeuralNexusPackageName() {
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertThat(appContext.packageName).contains("com.neuralnexusstudios.nexremote")
+        assertThat(appContext.packageName).contains("com.neuralnexusstudios.nex_remote")
     }
 }
