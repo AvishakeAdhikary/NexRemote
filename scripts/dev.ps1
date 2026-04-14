@@ -150,7 +150,7 @@ function Start-AndroidDebug {
     }
 
     if (-not $SkipAndroidLaunch) {
-        $packageName = 'com.neuralnexusstudios.nexremote.debug'
+        $packageName = 'com.neuralnexusstudios.nex_remote.debug'
         Write-Host "Launching $packageName on $($device.Serial)..." -ForegroundColor DarkGray
         Invoke-CommandChecked -Message 'adb launch (Android debug)' -ScriptBlock {
             & $adb @('-s', $device.Serial, 'shell', 'monkey', '-p', $packageName, '-c', 'android.intent.category.LAUNCHER', '1')

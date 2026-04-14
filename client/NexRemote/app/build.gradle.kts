@@ -1,11 +1,11 @@
 plugins {
     alias(libs.plugins.android.application)
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
 }
 
 android {
-    namespace = "com.neuralnexusstudios.nexremote"
+    namespace = "com.neuralnexusstudios.nex_remote"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -13,7 +13,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.neuralnexusstudios.nexremote"
+        applicationId = "com.neuralnexusstudios.nex_remote"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
