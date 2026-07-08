@@ -52,6 +52,7 @@ import com.neuralnexusstudios.nex_remote.core.feature.TaskProcessSortKey
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -366,5 +367,5 @@ private fun formatBytes(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
     bytes < 1024 * 1024 -> "${bytes / 1024} KB"
     bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
-    else -> String.format("%.1f GB", bytes / (1024f * 1024f * 1024f))
+    else -> String.format(Locale.ROOT, "%.1f GB", bytes / (1024f * 1024f * 1024f))
 }

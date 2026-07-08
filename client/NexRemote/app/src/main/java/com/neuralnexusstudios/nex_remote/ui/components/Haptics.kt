@@ -31,12 +31,7 @@ fun rememberAppHaptics(enabled: Boolean): (AppHapticStyle) -> Unit {
             if (!performed) {
                 runCatching {
                     val vibrator = context.defaultVibrator() ?: return@runCatching
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vibrator.vibrate(VibrationEffect.createOneShot(style.durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vibrator.vibrate(style.durationMs)
-                    }
+                    vibrator.vibrate(VibrationEffect.createOneShot(style.durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
                 }
             }
         }

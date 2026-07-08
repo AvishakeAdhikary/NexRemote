@@ -74,6 +74,7 @@ import com.neuralnexusstudios.nex_remote.core.model.DriveInfo
 import com.neuralnexusstudios.nex_remote.core.model.FileItem
 import com.neuralnexusstudios.nex_remote.core.model.FileProperties
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
+import java.util.Locale
 
 private data class EditorState(
     val path: String,
@@ -675,9 +676,9 @@ private fun fileIcon(item: FileItem): ImageVector {
 
 private fun formatSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024f)
-    bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024f * 1024f))
-    else -> String.format("%.1f GB", bytes / (1024f * 1024f * 1024f))
+    bytes < 1024 * 1024 -> String.format(Locale.ROOT, "%.1f KB", bytes / 1024f)
+    bytes < 1024 * 1024 * 1024 -> String.format(Locale.ROOT, "%.1f MB", bytes / (1024f * 1024f))
+    else -> String.format(Locale.ROOT, "%.1f GB", bytes / (1024f * 1024f * 1024f))
 }
 
 private fun lineNumbers(text: String): String {

@@ -52,6 +52,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    androidResources {
+        // The app's own UI strings are English-only; this only trims translated
+        // string tables that AndroidX/Material/Play Services ship for their internal
+        // (mostly accessibility) strings, not app content.
+        localeFilters += "en"
+    }
 }
 
 dependencies {
@@ -67,7 +74,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -77,7 +83,6 @@ dependencies {
     implementation(libs.material)
     implementation(libs.okhttp)
     implementation(libs.play.services.code.scanner)
-    implementation(libs.security.crypto)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

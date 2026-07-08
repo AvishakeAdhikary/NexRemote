@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.neuralnexusstudios.nex_remote.BuildConfig
 import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 
@@ -87,7 +88,7 @@ fun SettingsScreen(
             }
 
             Text(
-                "NexRemote 1.0.0\nDeveloped by Neural Nexus Studios",
+                "NexRemote ${BuildConfig.VERSION_NAME}\nDeveloped by Neural Nexus Studios",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

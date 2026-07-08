@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="sharedpref" path="EncryptedStore.xml" />
+        <exclude domain="sharedpref" path="nexremote_cert_store.xml" />
+        <exclude domain="sharedpref" path="nexremote_client_identity.xml" />
         <exclude domain="database" path="." />
         <exclude domain="file" path="logs/" />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="sharedpref" path="EncryptedStore.xml" />
+        <exclude domain="sharedpref" path="nexremote_cert_store.xml" />
+        <exclude domain="sharedpref" path="nexremote_client_identity.xml" />
         <exclude domain="database" path="." />
         <exclude domain="file" path="logs/" />
     </device-transfer>
