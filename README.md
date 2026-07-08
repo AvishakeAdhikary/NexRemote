@@ -5,12 +5,12 @@
 <h1 align="center">NexRemote</h1>
 
 <p align="center">
-  <b>Control your PC from your phone — seamlessly.</b><br>
-  Screen sharing · Gamepad · Keyboard & Mouse · Camera · File Transfer
+  <b>Control your Windows PC from your Android device.</b><br>
+  Screen sharing · Gamepad · Keyboard & Mouse · Camera · File Explorer · Media Control
 </p>
 
 <p align="center">
-  <a href="https://get.microsoft.com/installer/download/9p4rn2kggjxc?referrer=appbadge" target="_self" >
+  <a href="https://get.microsoft.com/installer/download/9p4rn2kggjxc?referrer=appbadge" target="_self">
     <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
   </a>
 </p>
@@ -23,129 +23,135 @@
 
 ---
 
-## ✨ Features
+## Features
 
 | Feature | Description |
 |---------|-------------|
-| 🖥 **Screen Sharing** | Live screen streaming with adjustable resolution (up to 4K), FPS (up to 60), and quality |
-| 🎮 **Gamepad** | Use your phone as a wireless game controller |
-| ⌨️ **Keyboard** | Full keyboard input with special keys and shortcuts |
-| 🖱 **Mouse** | Touchpad-style mouse control with gestures |
-| 📷 **Camera** | View your PC webcam feed remotely |
-| 📂 **File Transfer** | Send and receive files between devices |
-| 🔗 **QR Connect** | Instant connection via QR code — no IP typing needed |
-| 🔒 **Encrypted** | TLS 1.3 secure connections with fallback support |
-| 🌐 **LAN Discovery** | Automatic PC discovery on local network |
-| 🆓 **Free & Ad-Free** | No ads, no subscriptions, no telemetry |
+| Screen sharing | Live PC display streaming with configurable FPS, quality, resolution, multi-display support, pointer input, and PC audio streaming |
+| Gamepad | Use the Android device as a wireless gamepad with built-in and custom layouts, xinput/dinput/android modes, sticks, triggers, gyro, and macros |
+| Keyboard and mouse | Remote typing, hotkeys, touchpad movement, clicks, scrolling, and screen-share pointer controls |
+| Camera | View and switch PC webcams from the Android client |
+| File explorer | Browse drives, search, open, read, write, create, rename, delete, copy, move, and inspect files |
+| Media control | Play, pause, stop, skip, mute, and adjust volume on the PC |
+| Task manager | View system/process information and end processes from the client |
+| Discovery and pairing | LAN discovery, QR/manual connection, USB localhost connection, approval prompts, trusted devices, and certificate trust |
+
+NexRemote is free, ad-free, and does not include telemetry.
 
 ---
 
-## 🏗 Architecture
+## Current Architecture
 
+The current repo uses a native Windows host and a native Android client.
+
+```text
+Windows PC host
+  windows_app/NexRemote/
+  WinUI 3 + .NET 8
+  WebSocket server, UDP discovery, QR payloads, screen/camera/audio capture,
+  native input, file explorer, task manager, media control, trusted devices
+
+        wss://host:8765 or ws://host:8766
+        UDP discovery on 37020 with NEXREMOTE_DISCOVER
+
+Android client
+  client/NexRemote/
+  Kotlin + Jetpack Compose
+  Discovery, QR/manual/USB connection, secure auth, remote-control screens,
+  feature repositories, client settings, legal acceptance flow
 ```
-┌──────────────────────────────────────────────────┐
-│                  Windows PC                      │
-│  ┌─────────────┐  ┌───────────────────────────┐  │
-│  │   PyQt6 GUI │  │   NexRemote Server        │  │
-│  │  (Main Loop)│──│  (WebSocket, Async)       │  │
-│  │  Start/Stop │  │  Screen Capture · Camera  │  │
-│  │  QR Code    │  │  Input Relay · Files      │  │
-│  │  Settings   │  │  Discovery (UDP Broadcast)│  │
-│  └─────────────┘  └───────────────────────────┘  │
-│        │ GUI Thread        │ Server Thread       │
-└────────┼───────────────────┼─────────────────────┘
-         │                   │
-         │   WebSocket (wss / ws fallback)
-         │                   │
-┌────────┼───────────────────┼─────────────────────┐
-│        ▼                   ▼       Android       │
-│  ┌───────────────────────────────────────────┐   │
-│  │           NexRemote Mobile App            │   │
-│  │  QR Scan · LAN Discovery · Gamepad        │   │
-│  │  Keyboard · Mouse · Screen View · Camera  │   │
-│  └───────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────┘
-```
+
+The Windows app is already published on the Microsoft Store and should be treated as the stable server contract. Android production-readiness and Play Console work should happen in `client/` unless a server change is explicitly planned.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| **Python** | 3.12+ | Windows PC app |
-| **uv** | latest | Python dependency management |
-| **Flutter** | 3.x+ | Android mobile app |
-| **Android SDK** | API 21+ | Android build |
+| .NET SDK | 8.x | Build and run the WinUI Windows host |
+| Windows App SDK workload/support | Project-managed through NuGet | WinUI 3 desktop app |
+| JDK | 17 | Android Gradle builds |
+| Android SDK | API 36 / build-tools 36.x | Android client builds |
+| ADB | latest platform-tools | Optional device install, USB flow, and debug launch |
 
-### 1. Clone the Repository
+### Clone
 
-```bash
+```powershell
 git clone https://github.com/AvishakeAdhikary/NexRemote.git
 cd NexRemote
 ```
 
-### 2. Setup Windows App
+### Windows Host
 
 ```powershell
-cd windows_app/src
-uv sync                    # Creates venv and installs all dependencies
-.venv\Scripts\activate     # Activate the environment
-uv run main.py             # Launch the application
+cd windows_app\NexRemote
+dotnet build .\NexRemote.slnx -c Debug -p:Platform=x64
+dotnet run --project .\NexRemote\NexRemote.csproj -c Debug
 ```
 
-### 3. Setup Mobile App
-
-```bash
-cd nexremote
-flutter pub get            # Install dependencies
-flutter run                # Run on connected device / emulator
-```
-
-### 4. Quick Start (Both Apps)
+### Android Client
 
 ```powershell
-.\scripts\dev.ps1          # Starts both apps simultaneously
+cd client\NexRemote
+.\gradlew.bat :app:assembleDebug
 ```
+
+The debug package id is `com.neuralnexusstudios.nex_remote.debug`; release uses `com.neuralnexusstudios.nex_remote`.
+
+### One-Command Development
+
+From the repo root:
+
+```powershell
+.\scripts\dev.ps1
+```
+
+This builds and launches the Windows host, then builds, installs, and launches the Android debug app when an ADB device is available.
 
 ---
 
-## 📱 Connecting
+## Connecting
 
-### Method 1: QR Code (Recommended)
+### QR or Manual Connection
 
-1. Click **Start Server** in the Windows app
-2. A QR code appears in the app window
-3. In the mobile app, tap the **QR scanner icon** on the connection screen
-4. Point your camera at the QR code
-5. Connected! ✅
+1. Start the Windows host.
+2. Accept the required legal/consent screens on the host.
+3. Open the Android client.
+4. Use QR, manual IP/port entry, or LAN discovery.
+5. Approve the Android device on the Windows host when prompted.
 
-### Method 2: LAN Discovery
+### LAN Discovery
 
-1. Ensure both devices are on the **same Wi-Fi network**
-2. Click **Start Server** on the Windows app
-3. Open the mobile app — it will automatically discover available PCs
-4. Tap on your PC to connect
+1. Put the PC and Android device on the same local network.
+2. Start the Windows host.
+3. Use the Android connection screen to discover available PCs.
+
+### USB Localhost
+
+The client can connect to localhost through an ADB reverse flow when USB debugging is available. Keep the Windows host running and use the client USB connection path.
 
 ---
 
-## 🔨 Building for Production
+## Building
 
-### Windows Executable
-
-```powershell
-.\scripts\build.ps1 -SkipAndroid
-# Output: dist/windows/NexRemote.exe
-```
-
-### Android APK
+### Android Only
 
 ```powershell
-.\scripts\build.ps1 -SkipWindows
-# Output: dist/android/NexRemote.apk
+.\scripts\build.ps1 -SkipWindows -AndroidBundle
 ```
+
+Outputs are staged under `dist/android/`, including the APK, optional AAB, and release mapping file.
+
+### Windows Only
+
+```powershell
+.\scripts\build.ps1 -SkipAndroid -WindowsRuntime x64
+```
+
+Outputs are staged under `dist/windows/`.
 
 ### Both Platforms
 
@@ -153,81 +159,79 @@ flutter run                # Run on connected device / emulator
 .\scripts\build.ps1
 ```
 
+Signing is driven by environment variables when present. Do not commit signing material, keystores, certificates, or generated private artifacts.
+
 ---
 
-## 📁 Project Structure
+## Project Structure
 
-```
+```text
 NexRemote/
-├── windows_app/               # Windows PC application (Python + PyQt6)
-│   ├── src/
-│   │   ├── main.py            # Application entry point
-│   │   ├── core/              # Server, discovery, certs
-│   │   ├── ui/                # GUI windows and dialogs
-│   │   ├── security/          # Auth, firewall, audit
-│   │   ├── utils/             # Config, logging, paths
-│   │   └── assets/            # Icons and images
-│   └── nexremote.spec         # PyInstaller build config
-│
-├── nexremote/                 # Android mobile app (Flutter)
-│   ├── lib/
-│   │   ├── main.dart          # App entry point
-│   │   ├── core/              # Connection, discovery
-│   │   ├── ui/                # Screens (home, connect, camera, etc.)
-│   │   ├── input/             # Controllers (screen share, camera, etc.)
-│   │   └── utils/             # Config, logging
-│   └── android/               # Android native config
-│
-├── scripts/                   # Dev and build scripts
-│   ├── dev.ps1                # Start both apps for development
-│   └── build.ps1              # Production build (EXE + APK)
-│
-└── .github/workflows/ci.yml  # CI/CD pipeline
+├── client/
+│   ├── AGENTS.md
+│   └── NexRemote/
+│       ├── app/
+│       │   ├── build.gradle.kts
+│       │   └── src/main/java/com/neuralnexusstudios/nex_remote/
+│       │       ├── core/       # network, storage, models, feature repositories
+│       │       └── ui/         # Compose navigation, screens, theme, components
+│       ├── build.gradle.kts
+│       └── gradle/libs.versions.toml
+├── windows_app/
+│   ├── AGENTS.md
+│   └── NexRemote/
+│       ├── NexRemote.slnx
+│       └── NexRemote/
+│           ├── Services/       # server, discovery, auth, capture, input, files
+│           ├── Models/         # protocol and settings models
+│           ├── ViewModels/     # WinUI view models
+│           ├── Assets/         # Store, brand, and legal assets
+│           └── NexRemote.csproj
+├── shared/                     # shared assets/protocol notes
+├── docs/                       # legal and Store-readiness docs
+├── scripts/                    # development and production build scripts
+└── .github/workflows/ci.yml
 ```
 
 ---
 
-## ⚙️ Configuration
+## Agent Workspaces
 
-Configuration is stored in:
-- **Development:** `windows_app/src/data/config.json`
-- **Production (installed):** `%LOCALAPPDATA%\NexRemote\config.json`
+Agent instructions live in:
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `server_port` | `8765` | Secure WebSocket port |
-| `server_port_insecure` | `8766` | Fallback WebSocket port |
-| `discovery_port` | `37020` | UDP discovery port |
-| `max_clients` | `5` | Maximum simultaneous connections |
-| `require_approval` | `true` | Require approval for new devices |
-| `minimize_to_tray` | `true` | Minimize to system tray on close |
+- `client/AGENTS.md`
+- `windows_app/AGENTS.md`
+
+Private agent memory and scratch directories are gitignored, including `.gemini/`, `.claude/`, `.codex/`, `.cursor/`, `.windsurf/`, `.aider/`, `.continue/`, `.augment/`, `.qodo/`, and `.kilocode/`.
+
+For Android Play production-readiness work, use `client/.gemini/CLIENT-PRODUCTION-QA.md` as the private working answer file for the recurring Play Console production questions. Keep factual tester details honest and evidence-based.
 
 ---
 
-## 🔒 Security
+## Protocol Defaults
 
-- **TLS 1.3** encryption for all WebSocket connections (with insecure fallback for local dev)
-- **Self-signed certificates** generated per installation
-- **Device trust system** — approve new devices before granting access
-- **Audit logging** — all connection events are logged
-- **Windows Firewall** rules auto-configured on first launch
-
----
-
-## 📋 About
-
-**NexRemote** is developed by [**Neural Nexus Studios**](https://github.com/AvishakeAdhikary).
-
-This application is **completely free** and contains **no advertisements** of any kind. If you find NexRemote useful, please consider supporting its development:
-
-<p align="center">
-  <a href="https://buymeacoffee.com/avishake69">
-    <img src="https://img.shields.io/badge/☕_Buy_Me_a_Coffee-Support_Development-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
-  </a>
-</p>
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| Secure WebSocket | `8765` | Primary client/server connection |
+| Insecure WebSocket | `8766` | Local fallback and USB/local development |
+| UDP discovery | `37020` | LAN discovery with `NEXREMOTE_DISCOVER` |
+| Discovery response | `discovery_response` | Includes host identity, ports, version, and certificate fingerprint |
+| Binary stream headers | `SCRN`, `CAMF`, `AUDF` | Screen, camera, and audio frames |
 
 ---
 
-## 📄 License
+## Security
+
+- Secure WebSocket connections use the Windows host certificate and Android-side certificate trust checks.
+- Pairing uses trusted device records and public-key challenge/response.
+- New devices require approval by default.
+- Remote-control, background, camera, and legal consent flows are handled by the Windows host and Android client.
+- Android release builds enable R8 minification and resource shrinking.
+
+---
+
+## About
+
+NexRemote is developed by [Neural Nexus Studios](https://github.com/AvishakeAdhikary).
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

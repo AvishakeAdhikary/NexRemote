@@ -1,3 +1,15 @@
 logs/
 dist/
 build/
+
+# Local AI-agent memory and scratch state
+.gemini/
+.claude/
+.codex/
+.cursor/
+.windsurf/
+.aider/
+.continue/
+.augment/
+.qodo/
+.kilocode/
