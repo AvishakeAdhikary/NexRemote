@@ -1,6 +1,7 @@
 logs/
 dist/
 build/
+.idea/
 
 # Local AI-agent memory and scratch state
 .gemini/
