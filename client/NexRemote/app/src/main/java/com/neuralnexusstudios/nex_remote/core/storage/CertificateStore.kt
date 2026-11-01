@@ -31,6 +31,12 @@ class CertificateStore(context: Context) {
         }
     }
 
+    /** True when [certificate] is the one currently pinned for [host]. */
+    fun isPinned(host: String, certificate: Certificate): Boolean {
+        val existing = prefs.getString("fingerprint_$host", null)?.let(::normalizeFingerprint) ?: return false
+        return existing == normalizeFingerprint(fingerprint(certificate))
+    }
+
     fun clear(host: String) {
         prefs.edit().remove("fingerprint_$host").apply()
     }

@@ -1,6 +1,6 @@
 # NexRemote Privacy Policy
 
-Last Updated: April 8, 2026
+Last Updated: November 1, 2026
 
 Neural Nexus Studios ("Neural Nexus Studios", "we", "our", or "us") publishes NexRemote, including the Windows host application and the Android client application. This Privacy Policy explains how NexRemote accesses, stores, uses, transmits, and protects data.
 
@@ -53,6 +53,8 @@ When you enable a connection and use NexRemote features, the app may access, dis
 - remote input commands such as keyboard, mouse, touchpad, touch, trigger, joystick, d-pad, gyro, macro, or gamepad events
 - live screen-sharing frames, screen metadata, and optional system-audio stream data
 - live camera-streaming frames and camera metadata
+- phone screen sharing (optional): a live video of the Android phone's screen, its size and rotation, sent only to the Windows host you are connected to and shown there while sharing is on. It is not recorded or stored by the apps or by Neural Nexus Studios
+- PC control of a shared phone (optional): tap, swipe and Back/Home/Recents commands sent from the Windows host to the phone
 - file and folder names, paths, metadata, and file contents when you browse, read, create, move, copy, rename, or edit files through the file feature
 - task-manager and process information, such as process names, IDs, and resource usage
 - clipboard contents when clipboard-related features are enabled and used
@@ -72,6 +74,8 @@ Examples include:
 - background availability, startup behavior, and local firewall configuration on Windows so the host can remain available when enabled by the user
 - access to user-selected or app-permitted local files and libraries for file-management and media-related features
 - motion-sensor access on Android when motion-based controls are enabled
+- screen capture on Android (MediaProjection) only after you tap "Share my screen" and accept Android's capture prompt, with an ongoing notification and Stop button while sharing, and the notification permission on Android 13+ to show it
+- the Android Accessibility service "NexRemote PC control", only if you turn on "Allow PC control" and enable the service yourself after an in-app disclosure. It only performs taps, swipes and Back/Home/Recents sent by the PC you are sharing with, only while sharing. It does not read screen content, observe what you type, or collect data
 
 If you do not grant the required consent, disable a feature, or if platform privacy settings block access, the related feature should be unavailable or limited.
 

@@ -45,6 +45,8 @@ export function HostProvider({ children }: { children: ReactNode }) {
   const connected = connection !== null && socketOpen;
   const eventListeners = useRef(new Set<(event: HostEvent) => void>());
   const videoListeners = useRef(new Map<string, Set<VideoListener>>());
+  // Phones send SPS/PPS once per encoder start; keep the latest so viewers opened later can decode.
+  const lastConfig = useRef(new Map<string, Uint8Array>());
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -110,6 +112,7 @@ export function HostProvider({ children }: { children: ReactNode }) {
         if (message.data instanceof ArrayBuffer) {
           const split = splitRelayFrame(message.data);
           if (!split) return;
+          if (split.frame.length > 5 && split.frame[5] & 0x01) lastConfig.current.set(split.deviceId, split.frame.slice());
           videoListeners.current.get(split.deviceId)?.forEach((listener) => listener(split.frame));
           return;
         }
@@ -142,6 +145,8 @@ export function HostProvider({ children }: { children: ReactNode }) {
     const map = videoListeners.current;
     if (!map.has(deviceId)) map.set(deviceId, new Set());
     map.get(deviceId)!.add(listener);
+    const config = lastConfig.current.get(deviceId);
+    if (config) queueMicrotask(() => listener(config));
     return () => {
       map.get(deviceId)?.delete(listener);
     };

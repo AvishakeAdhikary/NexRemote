@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.PhonelinkRing
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.TouchApp
@@ -64,6 +65,7 @@ fun HomeScreen(
     onOpenScreenShare: () -> Unit,
     onOpenFileExplorer: () -> Unit,
     onOpenTaskManager: () -> Unit,
+    onOpenPhoneShare: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
@@ -79,6 +81,7 @@ fun HomeScreen(
         FeatureItem("Screen Share", "screen_share", Icons.AutoMirrored.Outlined.ScreenShare, onOpenScreenShare),
         FeatureItem("File Explorer", "file_explorer", Icons.Outlined.Folder, onOpenFileExplorer),
         FeatureItem("Task Manager", "task_manager", Icons.Outlined.TaskAlt, onOpenTaskManager),
+        FeatureItem("Share My Screen", "phone_screen", Icons.Outlined.PhonelinkRing, onOpenPhoneShare),
     ).map { feature ->
         val availability = resolveFeatureAvailability(sessionState, feature.key, feature.title)
         feature.copy(enabled = availability.first, statusText = availability.second)
@@ -322,6 +325,7 @@ private fun resolveFeatureAvailability(state: ServerSessionState, key: String, t
         "camera" -> state.capabilities?.cameraStreaming ?: false
         "screen_share" -> state.capabilities?.screenStreaming ?: false
         "file_explorer" -> state.capabilities?.fileTransfer ?: false
+        "phone_screen" -> state.capabilities?.phoneScreen ?: false
         "clipboard" -> state.capabilities?.clipboard ?: false
         "task_manager" -> true
         "media_control" -> true
@@ -333,6 +337,7 @@ private fun resolveFeatureAvailability(state: ServerSessionState, key: String, t
     val reason = when {
         featureStatus?.reason?.isNotBlank() == true -> featureStatus.reason
         featureStatus?.supported == false -> "${title} is not supported by this PC."
+        key == "phone_screen" && !capabilitySupported -> "Update NexRemote on your PC to share this phone's screen."
         !capabilitySupported -> "${title} is disabled on the server."
         featureStatus?.available == false -> "${title} is not ready yet."
         else -> null

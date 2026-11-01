@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NexRemote only talks to the user's own PC on the local network or over USB (adb reverse).
+  The plain ws:// fallback (port 8766) and USB mode (ws://127.0.0.1:8766) need cleartext, and the
+  PC address is any LAN IP, so it cannot be scoped to domains. The secure wss:// port pins the
+  PC's self-signed certificate in code (PinnedTrust); system CAs are not used for it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

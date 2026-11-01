@@ -162,6 +162,14 @@ For release-readiness work, also manually verify against the current Windows Sto
 - Phone screen share: start, rotation, Stop from the notification, PC control on/off, taps, swipes and Back/Home/Recents from the PC.
 - Against the Store 1.0.0.0 host: everything except phone screen share still works (legacy crypto fallback).
 
+Environment notes (Windows dev machine):
+
+- Needs JDK 17+ (a portable Temurin 21 works: set `JAVA_HOME`) and the SDK from the `android` CLI (`android sdk install platforms/android-36.1 build-tools/36.1.0`). Point Gradle at the SDK with `ANDROID_HOME`; don't commit `local.properties`.
+- If the Gradle wrapper download times out from Java but `curl` works, set `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true`.
+- On-device testing: prefer a real phone over an emulator (the owner's choice). Drive it with `adb` and `android layout`/`screencap`.
+- `android layout` (UiAutomation) temporarily suppresses other accessibility services. While a layout dump runs, `NexRemoteControlService` unbinds, and the app shows PC control as "not set up". Verify PC control with `adb shell dumpsys activity activities` instead of layout dumps.
+- Simulating an older client: build `master` in a temporary `git worktree` and `adb install -r -d` it. The `.debug` id and debug key match, so trusted pairing carries over.
+
 If you cannot run a command or cannot test with the Windows server, state that clearly in your final response and record the gap in `.gemini/test-runs.md`.
 
 ## Coding Style

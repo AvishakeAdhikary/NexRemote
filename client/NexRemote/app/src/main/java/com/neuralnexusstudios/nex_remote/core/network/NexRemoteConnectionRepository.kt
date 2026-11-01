@@ -36,14 +36,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
+import okio.ByteString.Companion.toByteString
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 class NexRemoteConnectionRepository(
     context: Context,
@@ -59,22 +54,18 @@ class NexRemoteConnectionRepository(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
-    private val permissiveTrustManager = object : X509TrustManager {
-        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
-        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
-        override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-    }
-
-    private val secureClient: OkHttpClient by lazy {
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, arrayOf<TrustManager>(permissiveTrustManager), SecureRandom())
+    private fun secureClientFor(trust: PinnedTrust): OkHttpClient =
         baseClient.newBuilder()
-            .sslSocketFactory(sslContext.socketFactory, permissiveTrustManager)
-            .hostnameVerifier(HostnameVerifier { _, _ -> true })
+            .sslSocketFactory(trust.socketFactory, trust.trustManager)
+            .hostnameVerifier(trust.hostnameVerifier)
             .build()
-    }
 
     private var webSocket: WebSocket? = null
+
+    // Post-auth message cipher: legacy fixed-key AES for v1 hosts, negotiated AES-GCM for v2 hosts.
+    @Volatile
+    private var cipher: MessageCipher = LegacyMessageCipher
+    private val sendLock = Any()
     private var pingJob: Job? = null
     private var reconnectJob: Job? = null
     private var realtimeJob: Job? = null
@@ -201,8 +192,25 @@ class NexRemoteConnectionRepository(
 
     private fun sendEncryptedJson(payload: JsonObject) {
         val json = JsonCodec.encodeToString(JsonObject.serializer(), payload)
-        webSocket?.send(CryptoUtils.encryptToBase64(json))
+        // Encrypt and enqueue under one lock so v2 nonce counters match the order on the wire.
+        synchronized(sendLock) {
+            webSocket?.send(cipher.encrypt(json))
+        }
     }
+
+    /**
+     * Sends a binary stream frame (phone screen video). Returns false when not connected, or when
+     * [droppable] and the socket's outgoing queue is backed up, so the caller can skip a frame.
+     */
+    fun sendBinary(frame: ByteArray, droppable: Boolean = true): Boolean {
+        if (_connectionState.value != ConnectionStatus.CONNECTED) return false
+        val socket = webSocket ?: return false
+        if (droppable && socket.queueSize() > MAX_BINARY_QUEUE_BYTES) return false
+        return socket.send(frame.toByteString())
+    }
+
+    val sessionCryptoName: String
+        get() = cipher.name
 
     private suspend fun attemptConnection(
         host: String,
@@ -211,21 +219,16 @@ class NexRemoteConnectionRepository(
         expectedCertificateFingerprint: String? = null,
     ): AttemptResult {
         val authResult = CompletableDeferred<AttemptResult>()
-        val authState = AuthHandshakeState(secure = secure)
+        val ephemeral = SessionCrypto.generateEphemeral()
+        val authState = AuthHandshakeState(secure = secure, ephemeral = ephemeral)
+        val trust = if (secure) PinnedTrust(host, expectedCertificateFingerprint, certificateStore) else null
+        cipher = LegacyMessageCipher
         val wsUrl = "${if (secure) "wss" else "ws"}://$host:$port"
         _connectionState.value = ConnectionStatus.CONNECTING
 
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                if (secure) {
-                    val certificate = response.handshake?.peerCertificates?.firstOrNull()
-                    if (certificate != null && !certificateStore.trustOrVerify(host, certificate, expectedCertificateFingerprint)) {
-                        authResult.complete(AttemptResult.CertificateRejected)
-                        webSocket.close(1008, "Certificate mismatch")
-                        return
-                    }
-                }
-
+                // TLS certificates were already verified against the pin during the handshake.
                 this@NexRemoteConnectionRepository.webSocket = webSocket
                 sendRawJson(
                     mapOf(
@@ -235,6 +238,9 @@ class NexRemoteConnectionRepository(
                         "client_public_key" to clientIdentityStore.publicKeyBase64,
                         "client_version" to BuildConfig.VERSION_NAME,
                         "platform" to "android",
+                        // v2 hosts answer with their own ephemeral key; v1 hosts ignore these.
+                        "protocol_version" to SessionCrypto.PROTOCOL_VERSION,
+                        "client_ephemeral_key" to SessionCrypto.publicKeyBase64(ephemeral),
                     ),
                 )
             }
@@ -249,7 +255,7 @@ class NexRemoteConnectionRepository(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (!authResult.isCompleted) {
-                    authResult.complete(AttemptResult.Failure)
+                    authResult.complete(if (trust?.rejected == true) AttemptResult.CertificateRejected else AttemptResult.Failure)
                 } else {
                     handleSocketFailure()
                 }
@@ -265,7 +271,7 @@ class NexRemoteConnectionRepository(
         }
 
         val request = Request.Builder().url(wsUrl).build()
-        val client = if (secure) secureClient else baseClient
+        val client = if (trust != null) secureClientFor(trust) else baseClient
         client.newWebSocket(request, listener)
 
         return try {
@@ -304,7 +310,7 @@ class NexRemoteConnectionRepository(
     ) {
         val plainJson = runCatching { JsonCodec.parseToJsonElement(text).jsonObject }.getOrNull()
         val decoded = plainJson ?: runCatching {
-            JsonCodec.parseToJsonElement(CryptoUtils.decryptBase64(text)).jsonObject
+            JsonCodec.parseToJsonElement(cipher.decrypt(text)).jsonObject
         }.getOrNull()
         val payload = decoded ?: return
         when (payload.string("type")) {
@@ -341,6 +347,24 @@ class NexRemoteConnectionRepository(
                     webSocket?.close(1008, "Challenge required")
                     authResult.complete(AttemptResult.Failure)
                     return
+                }
+                val serverEphemeral = payload.string("server_ephemeral_key")
+                if (payload.string("session_crypto") == SessionCrypto.SESSION_CRYPTO && serverEphemeral != null) {
+                    val negotiated = runCatching {
+                        val (c2s, s2c) = SessionCrypto.deriveClientKeys(
+                            authState.ephemeral.private,
+                            SessionCrypto.publicKeyBase64(authState.ephemeral),
+                            serverEphemeral,
+                        )
+                        SessionCipher.forClient(c2s, s2c)
+                    }.getOrNull()
+                    if (negotiated == null) {
+                        _events.tryEmit("Could not set up an encrypted session with the PC.")
+                        webSocket?.close(1011, "Key agreement failed")
+                        authResult.complete(AttemptResult.Failure)
+                        return
+                    }
+                    cipher = negotiated
                 }
                 _connectionState.value = ConnectionStatus.CONNECTED
                 _connectedDeviceName.value = payload.string("server_name") ?: payload.string("name").orEmpty()
@@ -483,11 +507,16 @@ class NexRemoteConnectionRepository(
         CertificateRejected,
     }
 
-    private data class AuthHandshakeState(
+    private class AuthHandshakeState(
         val secure: Boolean,
+        val ephemeral: java.security.KeyPair,
         var challengeSeen: Boolean = false,
         var challengeNonce: ByteArray? = null,
     )
+
+    private companion object {
+        const val MAX_BINARY_QUEUE_BYTES = 2L * 1024 * 1024
+    }
 
     private fun parseFeatureStatusMap(objectValue: JsonObject?): Map<String, FeatureStatus> {
         if (objectValue == null) return emptyMap()

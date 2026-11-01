@@ -1,6 +1,6 @@
 NexRemote Android Privacy Policy
 
-Last Updated: April 8, 2026
+Last Updated: November 1, 2026
 
 Developer and publisher: Neural Nexus Studios
 Principal place of business: Kolkata, West Bengal, India
@@ -23,6 +23,7 @@ Depending on the features you use, the app may store the following data locally:
 - locally generated client identity keys stored through Android platform security components
 - custom gamepad layouts, macros, and related local control preferences
 - local disclosure acknowledgements, including the QR camera disclosure acknowledgement
+- your "Allow PC control" choice and the acknowledgement of the PC-control (Accessibility) disclosure
 
 4. Data accessed or transmitted during use
 When you connect to a NexRemote Windows host and use app features, the Android app may access, display, or transmit:
@@ -31,6 +32,8 @@ When you connect to a NexRemote Windows host and use app features, the Android a
 - remote input commands such as keyboard, mouse, touchpad, touch, joystick, trigger, d-pad, macro, gamepad, and gyro input
 - live screen-sharing frames, display metadata, and optional screen-audio stream data
 - live camera-streaming frames and camera metadata
+- if you choose "Share my screen": a live video of this phone's screen (H.264), its size and rotation, sent only to the connected Windows host while sharing is on. It is not recorded or stored by the app or by Neural Nexus Studios
+- if you also allow PC control: tap, swipe and Back/Home/Recents commands received from that Windows host
 - file and folder names, paths, metadata, and file contents used by file-management features
 - clipboard content, task-manager information, and media metadata when those features are used
 
@@ -42,7 +45,10 @@ The Android app may use the following sensitive capabilities when relevant to th
 - camera access only when you choose QR pairing so the app can scan a connection code displayed by the Windows host
 - local network and internet access for discovery, pairing, and remote communication
 - motion-sensor data such as gyroscope input only when you enable motion-based control features
-- vibration and wake behavior for haptics and connection-related device behavior
+- vibration for haptic feedback
+- screen capture (Android MediaProjection) only after you tap "Share my screen" and accept Android's capture prompt; a foreground service with an ongoing notification and a Stop button runs while sharing
+- notifications (Android 13 and later) to show that ongoing screen-sharing notification
+- the Accessibility service "NexRemote PC control", only if you turn on "Allow PC control" and enable it yourself in Android settings after an in-app disclosure. It is used solely to perform taps, swipes and Back/Home/Recents sent by the Windows host you are sharing with, and only while sharing. It does not read screen content, observe what you type, or collect any data, and nothing it handles is sent to Neural Nexus Studios
 
 If you do not grant the required permission, decline the disclosure, or disable the feature, the related feature should remain unavailable or limited.
 

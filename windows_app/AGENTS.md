@@ -62,7 +62,7 @@ windows_app/
 3. The renderer only talks to the control API: REST for state and settings, plus a WebSocket at `/events` for approvals, sessions, feature status and the phone-screen video relay. The renderer gets the base URL and token through `preload.ts` (`contextIsolation` on, `nodeIntegration` off).
 4. Electron supervises the sidecar: a health check on `GET /health`, a restart with backoff if it crashes, and a clean stop on quit.
 
-**Gating:** the protocol servers only accept connections once the user has accepted the current legal documents (version `2026-04-05`) and granted remote-networking consent. `EnableRemoteAccess` must also be true. These are the same conditions as the legacy app.
+**Gating:** the protocol servers only accept connections once the user has accepted the current legal documents (version `2026-11-01`) and granted remote-networking consent. `EnableRemoteAccess` must also be true. These are the same conditions as the legacy app.
 
 ## Data and the database
 

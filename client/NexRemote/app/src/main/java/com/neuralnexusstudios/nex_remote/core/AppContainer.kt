@@ -5,6 +5,7 @@ import com.neuralnexusstudios.nex_remote.core.feature.CameraRepository
 import com.neuralnexusstudios.nex_remote.core.feature.FileExplorerRepository
 import com.neuralnexusstudios.nex_remote.core.feature.GamepadRepository
 import com.neuralnexusstudios.nex_remote.core.feature.MediaRepository
+import com.neuralnexusstudios.nex_remote.core.feature.PhoneScreenRepository
 import com.neuralnexusstudios.nex_remote.core.feature.ScreenShareRepository
 import com.neuralnexusstudios.nex_remote.core.feature.TaskManagerRepository
 import com.neuralnexusstudios.nex_remote.core.network.DiscoveryRepository
@@ -31,6 +32,11 @@ class AppContainer(context: Context) {
     val cameraRepository = CameraRepository(connectionRepository)
     val fileExplorerRepository = FileExplorerRepository(connectionRepository)
     val taskManagerRepository = TaskManagerRepository(connectionRepository)
+    val phoneScreenRepository = PhoneScreenRepository(
+        context = appContext,
+        preferences = preferences,
+        connectionRepository = connectionRepository,
+    )
     val gamepadRepository = GamepadRepository(
         preferences = preferences,
         connectionRepository = connectionRepository,

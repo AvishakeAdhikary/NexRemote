@@ -42,6 +42,9 @@ data class ServerCapabilities(
     @SerialName("file_transfer") val fileTransfer: Boolean = true,
     val clipboard: Boolean = false,
     @SerialName("multi_display") val multiDisplay: Boolean = true,
+    // Host 1.1+: the PC can show this phone's screen and (if allowed here) control it.
+    @SerialName("phone_screen") val phoneScreen: Boolean = false,
+    @SerialName("phone_control") val phoneControl: Boolean = false,
 )
 
 data class ServerSessionState(
@@ -60,6 +63,8 @@ data class AppSettings(
     val appHapticsEnabled: Boolean = true,
     val useSecureConnection: Boolean = true,
     val termsAccepted: Boolean = false,
+    val allowPcControl: Boolean = false,
+    val controlDisclosureAccepted: Boolean = false,
     val termsAcceptedAt: String? = null,
     val cameraDisclosureAccepted: Boolean = false,
 )

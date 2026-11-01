@@ -1,6 +1,6 @@
 # NexRemote Windows Host Privacy Policy
 
-Last Updated: April 8, 2026
+Last Updated: November 1, 2026
 
 This Privacy Policy explains how the NexRemote Windows host application by Neural Nexus Studios accesses, stores, uses, transmits, and protects data.
 
@@ -35,6 +35,7 @@ When you enable the Windows host and approve or use a connection, the app may ac
 - keyboard, mouse, touchpad, touch, gamepad, joystick, trigger, d-pad, gyro, and other remote-input commands
 - screen-sharing frames, display metadata, and optional system-audio stream data
 - camera-streaming frames and camera metadata
+- if a connected phone shares its screen: a live video of that phone's screen, shown in the Windows host window and not recorded or saved, and the taps, swipes and Back/Home/Recents commands you send to that phone when it allows PC control
 - file and folder names, paths, metadata, and file contents used by the file-management feature
 - clipboard contents when clipboard features are enabled and used
 - task-manager and process information such as process names, IDs, and resource usage
@@ -51,6 +52,7 @@ The Windows host declares or uses capabilities and behaviors that may access per
 - full-trust desktop behavior required for packaged desktop-host functionality
 - background availability, startup behavior, and local firewall configuration when enabled by the user
 - access to local files and libraries for file-management and media-related features
+- a local SQLite database in the app's data folder holding settings, trusted devices and a local connection history (device name, time, connected/disconnected/approved/denied). The history never leaves the PC and is capped in size
 
 If you do not grant the required consent, disable a feature, or if Windows privacy settings block access, the related feature should be unavailable or limited.
 

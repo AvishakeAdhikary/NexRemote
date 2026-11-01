@@ -14,6 +14,7 @@ import com.neuralnexusstudios.nex_remote.ui.screens.GamepadScreen
 import com.neuralnexusstudios.nex_remote.ui.screens.HomeScreen
 import com.neuralnexusstudios.nex_remote.ui.screens.LegalScreen
 import com.neuralnexusstudios.nex_remote.ui.screens.MediaControlScreen
+import com.neuralnexusstudios.nex_remote.ui.screens.PhoneScreenShareScreen
 import com.neuralnexusstudios.nex_remote.ui.screens.ScreenShareScreen
 import com.neuralnexusstudios.nex_remote.ui.screens.SettingsScreen
 import com.neuralnexusstudios.nex_remote.ui.screens.TaskManagerScreen
@@ -48,6 +49,7 @@ fun NexRemoteApp(appContainer: AppContainer) {
                 onOpenScreenShare = { navController.navigate(Routes.ScreenShare) },
                 onOpenFileExplorer = { navController.navigate(Routes.FileExplorer) },
                 onOpenTaskManager = { navController.navigate(Routes.TaskManager) },
+                onOpenPhoneShare = { navController.navigate(Routes.PhoneShare) },
             )
         }
         composable(Routes.Connection) {
@@ -77,6 +79,9 @@ fun NexRemoteApp(appContainer: AppContainer) {
         composable(Routes.TaskManager) {
             TaskManagerScreen(appContainer = appContainer, onBack = { navController.popBackStack() })
         }
+        composable(Routes.PhoneShare) {
+            PhoneScreenShareScreen(appContainer = appContainer, onBack = { navController.popBackStack() })
+        }
     }
 }
 
@@ -92,4 +97,5 @@ object Routes {
     const val ScreenShare = "screen-share"
     const val FileExplorer = "file-explorer"
     const val TaskManager = "task-manager"
+    const val PhoneShare = "phone-share"
 }

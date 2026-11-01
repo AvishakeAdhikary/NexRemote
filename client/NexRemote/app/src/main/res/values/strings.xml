@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">NexRemote</string>
+    <string name="screen_share_channel">Screen sharing</string>
+    <string name="screen_share_channel_description">Shown while this phone shares its screen with your PC.</string>
+    <string name="screen_share_notification_title">Sharing your screen with your PC</string>
+    <string name="screen_share_notification_text">Everything on screen is visible on the PC. Tap Stop to end.</string>
+    <string name="screen_share_stop">Stop</string>
+    <string name="control_service_label">NexRemote PC control</string>
+    <string name="control_service_summary">Lets your paired PC tap and swipe on this phone while you share its screen.</string>
+    <string name="control_service_description">NexRemote PC control lets the PC you paired with NexRemote perform taps, swipes and Back, Home and Recents on this phone, only while you share this phone\'s screen with that PC and keep \"Allow PC control\" on in the app. It does not read screen content or what you type, and collects no data.</string>
 </resources>
