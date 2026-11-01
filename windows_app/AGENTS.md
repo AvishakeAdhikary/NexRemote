@@ -111,8 +111,7 @@ windows_app/
 
 - `electron-builder.yml` plus `build/appx-manifest.xml` (custom template) produce `release/NexRemote_<ver>_x64.appx`, unsigned, for Store upload only (the Store signs it). The package version comes from `package.json` `version` with `.0` appended.
 - Keep `package.json` `dependencies` empty. Next compiles the renderer into `out/`, and the main process uses only Node and Electron. Anything listed under `dependencies` gets copied into the package (moving them out saved about 70 MB).
-- In the package the sidecar lives at `appesources\server
-exremote-server.exe`. The manifest's firewall rules must name that path, because the sidecar, not `NexRemote.exe`, owns ports 8765/8766/37020.
+- In the package the sidecar lives at `app\resources\server\nexremote-server.exe`. The manifest's firewall rules must name that path, because the sidecar, not `NexRemote.exe`, owns ports 8765/8766/37020.
 - The frozen sidecar is about 195 MB, mostly OpenCV and NumPy. If size matters, swap OpenCV for a lighter camera backend.
 - Running Electron from a VS Code terminal: unset `ELECTRON_RUN_AS_NODE` (`env -u ELECTRON_RUN_AS_NODE ...`), or Electron starts as plain Node.
 
