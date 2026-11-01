@@ -20,13 +20,6 @@
     "typecheck": "tsc --noEmit && tsc -p electron --noEmit",
     "lint": "eslint ."
   },
-  "dependencies": {
-    "lucide-react": "1.59.0",
-    "next": "16.4.2",
-    "qrcode.react": "4.2.0",
-    "react": "19.3.1",
-    "react-dom": "19.3.1"
-  },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "24.19.2",
@@ -37,11 +30,17 @@
     "electron-builder": "26.17.0",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
+    "lucide-react": "1.59.0",
+    "next": "16.4.2",
+    "qrcode.react": "4.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "wait-on": "9.5.1"
   },
   "allowScripts": {
     "electron@44.9.0": true
-  }
+  },
+  "dependencies": {}
 }

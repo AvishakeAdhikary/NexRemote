@@ -30,6 +30,6 @@ exe = EXE(
     name="nexremote-server",
     console=False,  # no console window; Electron reads stdout through a pipe
     disable_windowed_traceback=False,
-    icon="../desktop/build/icon.ico",
+    icon="../desktop/build/logo.ico",
 )
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="nexremote-server")
