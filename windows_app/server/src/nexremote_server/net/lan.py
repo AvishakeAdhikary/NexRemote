@@ -17,12 +17,27 @@ def primary_lan_ip() -> str:
         return "127.0.0.1"
 
 
+_VIRTUAL_ADAPTER_HINTS = (
+    "vethernet",
+    "virtualbox",
+    "vmware",
+    "hyper-v",
+    "loopback",
+    "wsl",
+    "docker",
+    "zerotier",
+)
+
+
 def all_lan_ips() -> list[dict[str, str]]:
-    """IPv4 addresses of interfaces that are up, excluding loopback and link-local."""
+    """IPv4 addresses phones can likely reach: interfaces that are up, excluding loopback,
+    link-local and virtual adapters (WSL/Hyper-V/VM switches), primary address first."""
     stats = psutil.net_if_stats()
     result: list[dict[str, str]] = []
     for name, addrs in psutil.net_if_addrs().items():
         if name in stats and not stats[name].isup:
+            continue
+        if any(hint in name.lower() for hint in _VIRTUAL_ADAPTER_HINTS):
             continue
         for addr in addrs:
             if addr.family != socket.AF_INET:

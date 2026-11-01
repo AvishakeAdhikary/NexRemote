@@ -9,9 +9,20 @@ from nexremote_server.core.server import ServerManager
 TOKEN = "secret-token"
 
 
+class StubManager(ServerManager):
+    """Records start/stop instead of binding real ports."""
+
+    async def start(self):
+        self.ctx.running = True
+        return True, ""
+
+    async def stop(self):
+        self.ctx.running = False
+
+
 @pytest.fixture
 def api(ctx):
-    app = create_control_app(ctx, ServerManager(ctx), TOKEN, asyncio.Event())
+    app = create_control_app(ctx, StubManager(ctx), TOKEN, asyncio.Event())
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1")
 
 
@@ -52,3 +63,17 @@ async def test_consent_and_devices(api, ctx) -> None:
         assert (await api.post("/approvals/nobody", json={"approved": True}, headers=headers)).json() == {
             "ok": False
         }
+
+
+async def test_busy_port_reports_error_instead_of_exiting(ctx) -> None:
+    import socket
+
+    with socket.socket() as blocker:
+        blocker.bind(("0.0.0.0", 0))
+        blocker.listen()
+        busy = blocker.getsockname()[1]
+        ctx.settings.update(server_port=busy)
+        manager = ServerManager(ctx)
+        ok, reason = await manager.start()
+    assert not ok and "start_failed" in reason
+    assert not ctx.running

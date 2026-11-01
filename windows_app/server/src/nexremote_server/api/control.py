@@ -17,6 +17,7 @@ from nexremote_server.core.context import AppContext
 from nexremote_server.core.server import ServerManager
 from nexremote_server.db.models import USER_EDITABLE_SETTINGS
 from nexremote_server.net.lan import all_lan_ips, primary_lan_ip
+from nexremote_server.net.startup import get_startup, set_startup
 from nexremote_server.protocol.constants import LEGAL_DOCUMENT_VERSION
 from nexremote_server.protocol.jsonutil import get_bool
 
@@ -175,6 +176,17 @@ def create_control_app(
         await apply_gating()
         ctx.publish_status()
         return state()
+
+    @app.get("/startup", dependencies=auth)
+    async def startup_state() -> dict[str, Any]:
+        return await get_startup()
+
+    @app.post("/startup", dependencies=auth)
+    async def startup_set(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        result = await set_startup(get_bool(body, "enabled"))
+        ctx.settings.update(auto_start=result["enabled"])
+        ctx.bus.publish("settings_changed", settings_view())
+        return result
 
     @app.get("/devices", dependencies=auth)
     async def devices() -> list[dict[str, Any]]:

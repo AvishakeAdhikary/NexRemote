@@ -23,6 +23,16 @@ class EmbeddedServer(uvicorn.Server):
     def capture_signals(self) -> Iterator[None]:
         yield
 
+    async def serve(self, sockets=None) -> None:
+        # uvicorn calls sys.exit() when it cannot bind; turn that into an ordinary error so a
+        # busy port fails this listener instead of killing the whole host process.
+        try:
+            await super().serve(sockets)
+        except SystemExit as exc:
+            raise RuntimeError(
+                f"could not bind {self.config.host}:{self.config.port} (port in use?)"
+            ) from exc
+
 
 def make_config(app, host: str, port: int, **kwargs) -> uvicorn.Config:
     return uvicorn.Config(

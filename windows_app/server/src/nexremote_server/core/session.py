@@ -125,5 +125,5 @@ class ClientSession:
             "crypto": self.cipher.name,
             "remote_address": self.remote_address,
             "client_version": self.client_version,
-            "phone_screen": bool(self.state.get("phone_screen", {}).get("active")),
+            "phone_screen": bool(getattr(self.state.get("phone_screen"), "active", False)),
         }

@@ -1,0 +1,47 @@
+{
+  "name": "nexremote-desktop",
+  "productName": "NexRemote",
+  "version": "1.1.0",
+  "private": true,
+  "description": "NexRemote Windows host: remote control and streaming for your own PC.",
+  "author": "Neural Nexus Studios <neural.nex.studios@gmail.com>",
+  "license": "MIT",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n next,electron -c cyan,magenta \"next dev -p 3123\" \"npm:dev:electron\"",
+    "dev:electron": "tsc -p electron && wait-on -t 120000 tcp:127.0.0.1:3123 && electron .",
+    "build:renderer": "next build",
+    "build:electron": "tsc -p electron",
+    "build:server": "cd ../server && uv run pyinstaller nexremote-server.spec --noconfirm",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "npm run build && electron .",
+    "package:appx": "npm run build && npm run build:server && electron-builder --win appx --x64 --publish never",
+    "package:dir": "npm run build && npm run build:server && electron-builder --win dir --x64 --publish never",
+    "typecheck": "tsc --noEmit && tsc -p electron --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "lucide-react": "1.59.0",
+    "next": "16.4.2",
+    "qrcode.react": "4.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "concurrently": "10.0.6",
+    "electron": "44.9.0",
+    "electron-builder": "26.17.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "wait-on": "9.5.1"
+  },
+  "allowScripts": {
+    "electron@44.9.0": true
+  }
+}

@@ -26,6 +26,7 @@ dependencies = [
     "winrt-Windows.Foundation>=2.3; sys_platform == 'win32'",
     "winrt-Windows.Media.Control>=2.3; sys_platform == 'win32'",
     "winrt-windows-devices-enumeration>=2.3 ; sys_platform == 'win32'",
+    "winrt-windows-applicationmodel>=2.3 ; sys_platform == 'win32'",
 ]
 
 [project.scripts]

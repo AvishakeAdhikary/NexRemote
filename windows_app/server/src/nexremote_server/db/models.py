@@ -45,11 +45,11 @@ class AppSettings(BaseModel):
 
     pc_name: str = Field(default_factory=socket.gethostname)
     device_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    server_port: int = 8765
-    server_port_insecure: int = 8766
-    discovery_port: int = 37020
+    server_port: int = Field(default=8765, ge=1024, le=65535)
+    server_port_insecure: int = Field(default=8766, ge=1024, le=65535)
+    discovery_port: int = Field(default=37020, ge=1024, le=65535)
     enable_remote_access: bool = True
-    max_clients: int = 5
+    max_clients: int = Field(default=5, ge=0, le=50)
     require_approval: bool = True
     log_level: str = "Information"
     auto_start: bool = False
@@ -86,15 +86,17 @@ class AppSettings(BaseModel):
         )
 
 
-# Keys the control API may change. Identity, certificate and ports stay internal.
+# Keys the control API may change. Identity and certificate stay internal.
 USER_EDITABLE_SETTINGS = frozenset(
     {
         "pc_name",
+        "server_port",
+        "server_port_insecure",
+        "discovery_port",
         "enable_remote_access",
         "max_clients",
         "require_approval",
         "log_level",
-        "auto_start",
         "minimize_to_tray",
         "show_notifications",
         "theme_preference",

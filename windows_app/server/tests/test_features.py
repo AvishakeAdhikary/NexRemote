@@ -159,6 +159,7 @@ async def test_phone_screen_relay_and_control(ctx, listeners) -> None:
                 assert payload == relay_prefix("phone-x") + frame
                 seen_binary = True
         assert ctx.phone_screen.cached_config_frames() == [relay_prefix("phone-x") + frame]
+        assert ctx.find_session("phone-x").describe()["phone_screen"] is True  # /state must not crash
 
         assert (
             await ctx.phone_screen.send_input("phone-x", {"input_action": "tap"})
