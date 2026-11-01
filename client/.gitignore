@@ -1,1 +1,4 @@
 .idea/
+NexRemote/keystore.properties
+*.jks
+*.keystore

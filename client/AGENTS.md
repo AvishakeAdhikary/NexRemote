@@ -149,7 +149,7 @@ Run commands from `client/NexRemote/`.
 
 - Unit tests: `.\gradlew.bat :app:testDebugUnitTest`
 - Debug build: `.\gradlew.bat :app:assembleDebug`
-- Release build: `.\gradlew.bat :app:assembleRelease`
+- Release build: `.\gradlew.bat :app:assembleRelease` (signed only when `keystore.properties` exists; see `keystore.properties.example`. That file is git-ignored and must never be committed).
 - Lint, when relevant: `.\gradlew.bat :app:lint`
 
 For release-readiness work, also manually verify against the current Windows Store server build when possible:

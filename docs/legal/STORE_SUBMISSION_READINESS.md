@@ -111,3 +111,23 @@ For lower policy risk, do not market NexRemote as a child-directed product. The 
 - Any future backend, analytics, relay, crash-reporting, or advertising change requires immediate policy and metadata updates.
 - If external dependencies such as ViGEmBus remain required for certain features, that dependency should be disclosed clearly in store metadata.
 - This pass improves compliance posture but is not a substitute for advice from a licensed lawyer in the jurisdictions where you distribute the apps.
+
+## Release 1.1 (November 2026) status
+
+- **Public privacy policy:** https://avishakeadhikary.github.io/Neural-Nexus-Studios/nexremote/privacy/
+- **Public terms of service:** https://avishakeadhikary.github.io/Neural-Nexus-Studios/nexremote/terms/
+
+  Both are rendered from `docs/legal/*.md` in the `AvishakeAdhikary/Neural-Nexus-Studios` site repo, under `data/legal/`. Copy updated files there when the policies change.
+- **Play declarations for the new Android features:**
+  - **Foreground service, `mediaProjection`:** "Share my screen" sends the phone screen to the user's own PC. The service runs only after the user taps Start and accepts Android's capture dialog, and shows an ongoing notification with a Stop action.
+  - **Accessibility API:** "NexRemote PC control" performs taps, swipes and Back/Home/Recents sent from the user's paired PC, only while sharing, and only after the in-app prominent disclosure. It reads no content and collects no data. `isAccessibilityTool=false`.
+  - **Demo videos:** recorded on a Galaxy A6+ (Android 10) and kept outside git in `dist/store-assets/`:
+    - `nexremote-screen-share-fgs-demo.mp4`
+    - `nexremote-pc-control-accessibility-demo.mp4`
+
+    Upload them to YouTube (unlisted is fine) and paste the links into the declarations.
+- **Data safety, phone screen video and PC-control commands:** processed on the device and sent only to the user's own PC. They are not collected by the developer, so "no data collected" stays accurate. Do not claim "encrypted in transit" while the v1 fallback (`ws://`, legacy fixed-key AES) still exists for older hosts.
+- **Android signing:** put `client/NexRemote/keystore.properties` (git-ignored; see `keystore.properties.example`) next to the keystore path, then run `gradlew :app:bundleRelease` to get a signed `app-release.aab` (versionCode 3, 1.1.0).
+- **Windows:** `windows_app/desktop/release/NexRemote_1.1.0_x64.appx`, unsigned, for Partner Center upload.
+- **Windows firewall:** the manifest opens 8765/8766/37020 for **Private** networks only, the same as 1.0.0.0. On networks marked Public, Windows prompts the user once to allow `nexremote-server.exe`.
+
