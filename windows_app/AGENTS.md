@@ -1,121 +1,159 @@
 # AGENTS.md
 
-Scope: this file applies to the Windows host workspace under `windows_app/`, especially the WinUI/.NET project in `windows_app/NexRemote/`.
+Scope: the Windows host workspace under `windows_app/`. The wire contract is defined in the root `AGENTS.md`; it is not repeated here.
 
 ## Mission
 
-The Windows app is the NexRemote PC host/server and is already published on the Microsoft Store. Treat it as the stable production side of the product. For Android client optimization work, this folder is primarily read-only protocol reference. Do not change Windows app code, package identity, signing settings, assets, legal text, publish profiles, or runtime behavior unless the user explicitly asks for Windows changes.
+The Windows app is the NexRemote PC host. It is published on the Microsoft Store as `NeuralNexusStudios.NexRemote`.
 
-If a future task does require Windows changes, keep them backward-compatible with the Android client and Microsoft Store release expectations.
+It is being rebuilt from WinUI 3/.NET to:
+
+- **Frontend:** Electron with a Next.js UI.
+- **Backend:** Python, managed with astral-uv, built on FastAPI, with SQLite.
+
+The rebuild must:
+
+- Ship as a normal Store update (1.0.0.0 → 1.1.0.0) under the **same package identity and publisher**.
+- Keep every existing feature.
+- Keep working with Android clients already in users' hands (protocol v1, byte-for-byte).
+- Carry over each user's settings, server certificate and trusted devices, so paired phones don't have to pair again.
+
+## Layout
+
+```
+windows_app/
+  server/                    Python backend (uv project)
+    pyproject.toml, uv.lock
+    src/nexremote_server/
+      main.py                entry point: starts all listeners in one asyncio loop
+      config.py              paths (MSIX LocalState vs %LOCALAPPDATA%\NexRemote), CLI args
+      protocol/              constants, legacy_crypto, v2_crypto, frames, json helpers
+      core/                  session, auth, router, state, approvals, event bus
+      features/              input, gamepad, screen, audio, camera, files, tasks, media,
+                             clipboard, adb, phone_screen
+      db/                    SQLModel models, engine, legacy JSON importer
+      api/                   local control API for the Electron UI (REST + /events WS)
+      net/                   discovery (UDP 37020), certificates, LAN address
+    tests/                   pytest: golden protocol tests, auth flows, feature replies
+    nexremote-server.spec    PyInstaller onedir spec
+  desktop/                   Electron + Next.js
+    electron/                main.ts, preload.ts, sidecar.ts, tray.ts
+    src/app/                 Next.js App Router pages (static export)
+    build/appx/              AppxManifest template + Store assets
+    electron-builder.yml
+  NexRemote/                 LEGACY WinUI host. Read-only reference; delete once the parity checklist passes.
+```
+
+## How it runs
+
+1. Electron starts.
+   - It takes the single-instance lock and picks a free port on `127.0.0.1`.
+   - It generates a random bearer token.
+   - It spawns `nexremote-server.exe` (dev mode: `uv run nexremote-server`) with `--control-port` and `--control-token`.
+2. The sidecar starts four listeners in one asyncio loop:
+
+   | Listener | Purpose |
+   |---|---|
+   | `wss://0.0.0.0:8765` | uvicorn with TLS (`certs/server.crt` and `certs/server.key`) |
+   | `ws://0.0.0.0:8766` | uvicorn, plain |
+   | UDP `0.0.0.0:37020` | discovery |
+   | `http://127.0.0.1:<control-port>` | control API |
+
+3. The renderer only talks to the control API: REST for state and settings, plus a WebSocket at `/events` for approvals, sessions, feature status and the phone-screen video relay. The renderer gets the base URL and token through `preload.ts` (`contextIsolation` on, `nodeIntegration` off).
+4. Electron supervises the sidecar: a health check on `GET /health`, a restart with backoff if it crashes, and a clean stop on quit.
+
+**Gating:** the protocol servers only accept connections once the user has accepted the current legal documents (version `2026-04-05`) and granted remote-networking consent. `EnableRemoteAccess` must also be true. These are the same conditions as the legacy app.
+
+## Data and the database
+
+- **Data folder:**
+  - Packaged (MSIX): `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState`, the same folder the WinUI app used.
+  - Unpackaged or dev: `%LOCALAPPDATA%\NexRemote`.
+  - `--data-dir` overrides both.
+  - Resolution happens in `config.py`. Electron passes `--data-dir` explicitly when packaged.
+- **Database:** `nexremote.db` (SQLite, SQLModel). Tables:
+  - `setting`: key/value JSON.
+  - `trusteddevice`: `device_id`, name, public key, first and last connected.
+  - `connectionevent`: local audit trail, never sent anywhere.
+- **Schema changes:** bump `SCHEMA_VERSION` in `db/engine.py` and add a migration step there. Migrations must be idempotent.
+- **Legacy import** (`db/legacy_import.py`) runs once when the DB is empty. It reads the WinUI files:
+  - `settings.json` (PascalCase keys)
+  - `trusted_devices.json` (timestamps as Unix seconds or ISO strings)
+  - the existing `certs/`
+
+  Afterwards it renames them to `*.imported` rather than deleting them. Never regenerate `DeviceId` or the certificate if they already exist: the phones have them pinned.
+- Logs go to `logs/nexremote.log`, rotated and kept for 30 days.
+
+## Commands
+
+**Server** (`windows_app/server/`):
+
+| Task | Command |
+|---|---|
+| Install | `uv sync` |
+| Run (dev) | `uv run nexremote-server --dev` (no auth token; control API on port 51888) |
+| Tests | `uv run pytest` |
+| Lint | `uv run ruff check .` |
+| Freeze | `uv run pyinstaller nexremote-server.spec --noconfirm` (output: `dist/nexremote-server/`) |
+
+**Desktop** (`windows_app/desktop/`):
+
+| Task | Command |
+|---|---|
+| Install | `npm install` |
+| Dev | `npm run dev` (Next dev server, Electron and the uv-run sidecar together) |
+| Lint, typecheck | `npm run lint`, `npm run typecheck` |
+| MSIX | `npm run package:appx` (builds Next, compiles Electron, freezes the sidecar, runs electron-builder; output in `desktop/release/`) |
+
+## Store-safety rules
+
+- **Identity:** never change `identityName` (`NeuralNexusStudios.NexRemote`), `publisher` (`CN=8559855F-6955-4418-A6D8-835C3238CF34`) or `publisherDisplayName` (`Neural Nexus Studios`) in `electron-builder.yml` or the AppxManifest template.
+- **Versions:** keep the form `Major.Minor.Build.0` and only ever increase them. The current release is `1.1.0.0`.
+- **The AppxManifest template must keep:**
+  - Capabilities: `runFullTrust`, `internetClient`, `internetClientServer`, `privateNetworkClientServer`, `webcam`.
+  - Firewall rules for TCP 8765/8766 and UDP 37020.
+  - The `NexRemoteStartup` startup task.
+- **Signing and packaging:** don't commit `.pfx` files or signing passwords. Store uploads are re-signed by Microsoft. Sideload tests use a local dev cert whose subject matches the publisher.
+- **Product:** no telemetry, ads or accounts. The control API binds to `127.0.0.1` only and requires the token in packaged builds.
+- **Python dependencies:** they must freeze with PyInstaller. Check `uv run pyinstaller ...` still works after adding one.
+
+## Feature parity checklist
+
+Every item must work before the legacy `NexRemote/` folder is deleted. Record results in `windows_app/.claude/test-runs.md` (gitignored), and state any gaps plainly.
+
+- **Server lifecycle:** start/stop from the UI and the tray, minimize to tray, single instance, start with Windows.
+- **Connection:**
+  - UDP discovery reply and QR payload (fields as in the root contract).
+  - Pairing a new phone, and reconnecting a trusted one without approval.
+  - Approval allow, deny and the 12 s timeout.
+  - `MaxClients` rejection, and rejection while remote access is off.
+  - Secure port with challenge (DER and raw signatures) and insecure port without one.
+- **Input:** keyboard (type, press, release, hotkey), mouse (move, move_relative, click, press, release, scroll), macros.
+- **Gamepad:** xinput, dinput and android modes; buttons including `keyboard_*` / `mouse_*` remaps; dpad, sticks, triggers, gyro; `gamepad_mode` reply; ViGEm detection.
+- **Screen share:** list_displays, start with display_index(es), fps, quality, resolution, audio; set_* actions; input with normalized and pixel coordinates; `SCRN` frames; `AUDF` audio with `audio_format`.
+- **Camera:** consent gate (`permission_required`), list, start, start_multi, stop, stop_all, set_camera, error codes, `CAMF` frames.
+- **File explorer:** every action listed in the root contract, with paths kept under drive roots.
+- **Task manager:** snapshot (1 s cache), list_processes, system_info, end_process (tree kill; `elevation_required` on access denied).
+- **Media control:** every action, plus the `media_info` push every 1.5 s.
+- **Clipboard:** get, set, clear.
+- **USB:** the adb reverse poller (`<data>\tools\platform-tools\`, then next to the app, then `where adb`).
+- **Status:** capabilities and feature_status reflect real availability, including the `action_required` codes.
+- **Phone screen (new):** `PSCR` decode in the UI, input relay back to the phone, Back/Home/Recents.
+- **Upgrade:** after installing over Store 1.0.0.0, settings, the certificate and trusted devices carry over and the phone reconnects without pairing again.
+
+## Coding style
+
+- **Python:**
+  - 3.12, type hints everywhere, `ruff` clean.
+  - Asyncio first: blocking Win32/COM/capture calls run in `asyncio.to_thread` or a dedicated thread, never on the event loop.
+  - Feature modules expose `async handle(session, msg) -> None` and register with the router by `type`.
+  - Wire dicts use the exact snake_case keys. Pydantic models use `populate_by_name`.
+- **TypeScript:**
+  - Strict mode.
+  - Renderer code never imports Node or Electron. All IPC goes through the preload bridge or the control API.
+  - UI is Tailwind + shadcn/ui components, restrained, with light and dark themes.
+- **Protocol:** changes are additive only and land with the matching client change (see root `AGENTS.md`).
 
 ## Memory
 
-Use private, gitignored agent memory for protocol notes, build notes, and manual test checklists. The repository root intentionally ignores common local-agent folders.
-
-Preferred memory directories:
-
-- Gemini: `windows_app/.gemini/`
-- Claude: `windows_app/.claude/`
-- Codex: `windows_app/.codex/`
-- Cursor: `windows_app/.cursor/`
-- Windsurf: `windows_app/.windsurf/`
-- Aider: `windows_app/.aider/`
-- Continue: `windows_app/.continue/`
-- Augment, Qodo, and Kilo Code: `windows_app/.augment/`, `windows_app/.qodo/`, `windows_app/.kilocode/`
-
-Do not commit files from these directories, generated scratch logs, local certificates, signing material, personal tester data, or machine-specific paths.
-
-Suggested memory layout for longer work:
-
-- `windows_app/.gemini/context.md` for stable server/project notes.
-- `windows_app/.gemini/protocol-contract.md` for client/server compatibility notes.
-- `windows_app/.gemini/test-runs.md` for build and manual integration results.
-
-If the executing agent is Claude, Codex, Cursor, Windsurf, Aider, Continue, Augment, Qodo, or Kilo Code, mirror short-lived notes in that agent's own directory when useful. Keep this Windows app treated as protocol reference for Android client work unless the user explicitly asks for Windows changes.
-
-Keep durable project documentation outside `.gemini/` only when the user explicitly asks for it.
-
-## Project Shape
-
-The live Windows app is a WinUI 3/.NET host, not the older Python layout described in the root README.
-
-- Solution: `windows_app/NexRemote/NexRemote.slnx`
-- App project: `windows_app/NexRemote/NexRemote/NexRemote.csproj`
-- Window/UI: `MainWindow.xaml`, `MainWindow.cs`, `ViewModels/`
-- Server host: `Services/RemoteServerHost*.cs`
-- Protocol constants: `Services/ProtocolConstants.cs`
-- JSON options: `Services/ProtocolJson.cs`
-- Discovery and QR payloads: `Services/DiscoveryService.cs`, `Services/DiscoveryModelFactory.cs`, `Models/DiscoveryResponse.cs`, `Models/QrConnectionPayload.cs`
-- Capabilities/feature status: `Models/CapabilitiesModel.cs`, `Models/FeatureStatusInfo.cs`, `Services/ServerCapabilitiesFactory.cs`
-- Store/package metadata: `Package.appxmanifest`, `Properties/PublishProfiles/`, app assets, and signing properties in the project file.
-
-## Store-Safety Rules
-
-Because this app is already on the Microsoft Store:
-
-- Do not change `Package.appxmanifest`, package identity, signing thumbprints, temporary keys, publish profiles, app logos, Store assets, or legal documents without explicit approval.
-- Do not change default ports, protocol message names, JSON property names, binary frame headers, encryption, trust, or approval behavior unless the Android client is updated compatibly and the user approves the release plan.
-- Do not remove services just because a feature appears optional. Android client review/optimization work must not shrink the server.
-- Do not add telemetry, ads, account systems, or network services unrelated to the local remote-control workflow unless explicitly requested and documented.
-- Do not place secrets, certificates, or signing material in `.gemini/` or new committed files.
-
-## Client/Server Contract
-
-Preserve these contracts used by the Android client:
-
-- UDP discovery magic: `NEXREMOTE_DISCOVER`.
-- Default discovery port: `37020`.
-- Default secure WebSocket port: `8765`.
-- Default insecure WebSocket port: `8766`.
-- Discovery/QR fields include `type`, `host`, `name`, `port`, `port_insecure`, `id`, `version`, and `cert_fingerprint`.
-- Auth message types include `auth`, `auth_challenge`, `auth_response`, `auth_success`, `auth_failed`, and `connection_rejected`.
-- Liveness messages are `ping` and `pong`.
-- Main command types include `keyboard`, `mouse`, `gamepad`, `gamepad_xinput`, `gamepad_dinput`, `gamepad_android`, `gamepad_mode`, `macro`, `camera`, `file_explorer`, `screen_share`, `media_control`, `task_manager`, and `clipboard`.
-- Binary frame headers are `SCRN`, `CAMF`, and `AUDF`, followed by a one-byte index and then payload bytes.
-- JSON uses explicit `JsonPropertyName` snake_case fields and `ProtocolJson.SharedOptions`; preserve wire names even when C# property names differ.
-- Feature status and capability fields are consumed by the Android home screen to enable, disable, and explain features.
-
-## Server Features
-
-The server hosts or coordinates:
-
-- TLS/insecure WebSocket hosting and local-network discovery.
-- Device trust, approval timeout, public-key challenge/response, and connection rejection.
-- Native keyboard/mouse input, macro replay, and screen-share input.
-- Gamepad transport, xinput/dinput/android modes, and ViGEm availability reporting.
-- Screen capture, multiple displays, frame quality/FPS/resolution, and screen audio capture.
-- Camera capture and camera permission/consent handling.
-- File explorer operations.
-- Task manager operations.
-- Media controls and clipboard operations.
-- QR payload generation, tray behavior, app settings, theme, logging, and legal document display.
-
-Do not break any of these when making server-side changes.
-
-## Build And Verification
-
-Run commands from `windows_app/NexRemote/`.
-
-- Restore/build when needed: `dotnet build .\NexRemote.slnx -c Debug -p:Platform=x64`
-- Release/package work should follow the existing `.pubxml` profiles and Store signing setup only when explicitly requested.
-
-Manual compatibility checks matter more than isolated compilation for protocol changes:
-
-- Start/stop server.
-- Confirm UDP discovery and QR payload.
-- Pair a new Android client and reconnect a trusted one.
-- Verify approval allow/deny/timeout.
-- Verify secure and insecure connections.
-- Exercise every command type listed in the contract.
-- Verify screen, camera, and audio binary frames are still parsed by Android.
-- Confirm feature status/capabilities match actual availability.
-
-If you cannot test with the Android client, state the gap clearly and record it in `windows_app/.gemini/test-runs.md`.
-
-## Coding Style
-
-- Follow existing C# nullable-enabled style and service boundaries.
-- Keep protocol changes additive and backward-compatible.
-- Prefer explicit JSON property names for anything crossing the wire.
-- Keep UI changes restrained and consistent with the current WinUI app.
-- Avoid broad refactors in Store-published paths unless the task requires them.
+Private, gitignored notes go in `windows_app/.claude/`, `.gemini/`, `.codex/`, `.cursor/` and similar folders. Never commit them.
