@@ -70,6 +70,10 @@ Both sides must agree on all of this. Phones already in users' hands run the v1 
   | `AUDF` | host → client | PCM16 LE PC audio |
   | `PSCR` | client → host | flags byte (bit0 codec config, bit1 keyframe), then 8-byte big-endian pts in µs, then an H.264 Annex-B access unit |
 
+- **`phone_screen` messages (v1.1):**
+  - Client → host: `start` / `config_changed` with `{codec, width, height, fps, rotation, control_available}`, `control_changed {control_available}`, and `stop`.
+  - Host → client: `input {input_action: tap|long_press|swipe|key, normalized_x, normalized_y, end_x, end_y, duration_ms, key: back|home|recents}`, `request_keyframe`, and `stop_request`.
+  - The host only sends `input` when the phone reported `control_available` and the PC setting `phone_control_enabled` is on.
 - **Status objects:** `capabilities` and `feature_status` (`{supported, available, reason, action_required}` per feature) drive the client's home screen. Add keys freely; never rename or remove them.
 - **Wire names** are snake_case. Keep them stable even when the language-side names differ.
 

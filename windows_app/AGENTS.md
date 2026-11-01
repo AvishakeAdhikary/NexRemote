@@ -82,7 +82,8 @@ windows_app/
   - the existing `certs/`
 
   Afterwards it renames them to `*.imported` rather than deleting them. Never regenerate `DeviceId` or the certificate if they already exist: the phones have them pinned.
-- Logs go to `logs/nexremote.log`, rotated and kept for 30 days.
+- Logs go to `logs/nexremote.log`, rotated daily and kept for 30 days.
+- **Verified:** the importer has been run against a copy of the real Store 1.0.0.0 LocalState. DeviceId, PC name, legal/consent state, the certificate fingerprint and the trusted phone's key all carried over.
 
 ## Commands
 
@@ -95,6 +96,7 @@ windows_app/
 | Tests | `uv run pytest` |
 | Lint | `uv run ruff check .` |
 | Freeze | `uv run pyinstaller nexremote-server.spec --noconfirm` (output: `dist/nexremote-server/`) |
+| Smoke (manual) | Run the dev server, then `POST /legal/accept`, `POST /consent {"remote_control":true}` on `http://127.0.0.1:51888` before connecting a phone. |
 
 **Desktop** (`windows_app/desktop/`):
 
@@ -141,10 +143,16 @@ Every item must work before the legacy `NexRemote/` folder is deleted. Record re
 - **Phone screen (new):** `PSCR` decode in the UI, input relay back to the phone, Back/Home/Recents.
 - **Upgrade:** after installing over Store 1.0.0.0, settings, the certificate and trusted devices carry over and the phone reconnects without pairing again.
 
+## Known platform quirks
+
+- **Camera:** OpenCV's MSMF backend fails to open some integrated webcams, so the worker tries DirectShow first and falls back to MSMF. Names and IDs come from WinRT `DeviceInformation`; OpenCV indexes follow the same order.
+- **Audio:** WASAPI loopback only delivers `AUDF` chunks while something is actually playing. Silence means no frames, which is the same as the legacy host.
+- **Network:** the protocol listeners use uvicorn's `websockets-sansio` implementation with per-message deflate off. JPEG and H.264 don't compress, so deflate would only cost CPU.
+
 ## Coding style
 
 - **Python:**
-  - 3.12, type hints everywhere, `ruff` clean.
+  - Python 3.13 (pinned in `.python-version`; uv downloads it), type hints everywhere, `ruff check` and `ruff format` clean.
   - Asyncio first: blocking Win32/COM/capture calls run in `asyncio.to_thread` or a dedicated thread, never on the event loop.
   - Feature modules expose `async handle(session, msg) -> None` and register with the router by `type`.
   - Wire dicts use the exact snake_case keys. Pydantic models use `populate_by_name`.
