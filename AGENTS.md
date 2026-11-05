@@ -91,7 +91,8 @@ Both sides must agree on all of this. Phones already in users' hands run the v1 
   - Changing identity or publisher would turn the update into a different app and lose existing users' data.
 - **Google Play:** `applicationId` `com.neuralnexusstudios.nex_remote`.
   - `versionCode` must increase on every upload.
-  - Keystores come only from env vars or CI secrets (see `scripts/build.ps1`).
+  - Keystores come from env vars or CI secrets (see `scripts/build.ps1`), or, for local builds, the git-ignored `client/NexRemote/keystore.properties`. Never commit keystores or their passwords.
+  - The upload key was replaced in November 2026 (the old password was lost). If Play rejects a bundle with an upload-key mismatch, request an upload key reset with the new key's certificate (`dist/store-assets/upload_certificate.pem`, re-exportable with `keytool -export -rfc`).
 - **Version bumps:** bump Windows and Android together when a release adds protocol features.
 
 ## Ground rules
