@@ -131,3 +131,22 @@ For lower policy risk, do not market NexRemote as a child-directed product. The 
 - **Windows:** `windows_app/desktop/release/NexRemote_1.1.0_x64.appx`, unsigned, for Partner Center upload.
 - **Windows firewall:** the manifest opens 8765/8766/37020 for **Private** networks only, the same as 1.0.0.0. On networks marked Public, Windows prompts the user once to allow `nexremote-server.exe`.
 
+
+### Submission log (2026-11-06)
+
+**Microsoft Store**
+- Submission 2 of `9P4RN2KGGJXC` is in certification.
+- Package: `NexRemote_1.1.0.0_x64.msixbundle`, a bundle wrapping the 1.1.0.0 appx. The app shipped a bundle before, so updates must be bundles. Target is Windows.Desktop; the 1.0.0.0 bundle stays as the rank-2 fallback.
+- `runFullTrust` justification updated for the Electron + `nexremote-server.exe` architecture.
+- Listing: description and What's new mention phone screen share (requires Android 1.1). There are four new desktop screenshots with names anonymized, plus box art.
+- Properties:
+  - Privacy URL switched to the Neural Nexus Studios site.
+  - Removed the false "Mixed Reality immersive" display mode.
+  - Removed the bogus minimum hardware (touch, NFC, BLE, telephony, mic, Xbox controller, MR). Minimum is now keyboard and mouse; camera stays as recommended.
+  - DirectX and VRAM minimums cleared.
+
+**Google Play**
+- **Upload key reset:** requested ("forgot keystore password"). The new key (SHA1 `2F:AA:CD:…:2A:45`) becomes valid on 2026-11-07 at 21:48 UTC, and no bundles can be uploaded before then. After that, upload `dist/store-assets/nexremote-1.1.0-vc3.aab` to *Closed testing – Alpha*. A draft release (#4) already exists.
+- **After upload:** complete the Foreground service (mediaProjection) and Accessibility declarations that appear for the new bundle, using the video https://youtu.be/H63TporcmqY. Then re-check Data safety and send for review.
+- **Privacy policy:** URL switched and sent for review.
+- **Production access:** all three closed-test criteria show as met. The application form is pre-filled from an earlier draft with claims about testers (recruitment, engagement, Google Forms feedback). It was deliberately **not** submitted: the developer must confirm those answers are true first.
