@@ -15,14 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.TouchApp
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Button
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.composables.ui.components.Slider
+import com.composables.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,7 +37,6 @@ import com.neuralnexusstudios.nex_remote.ui.components.AppHapticStyle
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 import com.neuralnexusstudios.nex_remote.ui.components.rememberAppHaptics
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TouchpadScreen(
     appContainer: AppContainer,

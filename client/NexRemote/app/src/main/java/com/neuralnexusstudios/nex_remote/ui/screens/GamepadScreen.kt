@@ -13,6 +13,25 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.composeunstyled.ProvideContentColor
+import com.neuralnexusstudios.nex_remote.ui.design.Nx
+import com.neuralnexusstudios.nex_remote.ui.design.NxIconButton
+import com.neuralnexusstudios.nex_remote.ui.design.NxStatusPill
+import com.neuralnexusstudios.nex_remote.ui.design.NxType
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,18 +49,17 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.ScreenRotationAlt
 import androidx.compose.material.icons.outlined.Vibration
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.AlertDialog
+import com.neuralnexusstudios.nex_remote.ui.design.compat.AssistChip
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.CardDefaults
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.IconButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Surface
+import com.composables.ui.components.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -61,6 +79,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.core.feature.GamepadRepository
@@ -77,7 +96,6 @@ import com.neuralnexusstudios.nex_remote.ui.components.rememberAppHaptics
 import kotlin.math.abs
 import kotlin.math.min
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamepadScreen(
     appContainer: AppContainer,
@@ -120,80 +138,100 @@ fun GamepadScreen(
         onDispose { manager.unregisterListener(listener) }
     }
 
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = activeLayout.name,
-                onBack = onBack,
-                actions = {
-                    IconButton(onClick = {
-                        val updated = activeLayout.copy(hapticFeedback = !activeLayout.hapticFeedback)
-                        repository.saveLayout(updated)
-                        repository.setActive(updated)
-                    }) { Icon(Icons.Outlined.Vibration, contentDescription = "Toggle layout haptics") }
-                    IconButton(onClick = {
-                        val updated = activeLayout.copy(gyroEnabled = !activeLayout.gyroEnabled)
-                        repository.saveLayout(updated)
-                        repository.setActive(updated)
-                    }) { Icon(Icons.Outlined.ScreenRotationAlt, contentDescription = "Toggle gyro") }
-                    IconButton(onClick = { editingLayout = activeLayout }) {
-                        Icon(Icons.Outlined.Edit, contentDescription = "Edit layout")
-                    }
-                    IconButton(onClick = { showLayoutPicker = true }) {
-                        Icon(Icons.Outlined.Layers, contentDescription = "Layouts")
-                    }
-                },
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    ImmersiveWhen(landscape)
+
+    // The editor replaces the play screen in place (same top bar, chip row and canvas area), so the
+    // canvas you edit has exactly the size and shape of the canvas you play on.
+    editingLayout?.let { layout ->
+        LayoutEditorDialog(
+            initialLayout = layout,
+            onDismiss = { editingLayout = null },
+            onSave = { updated ->
+                repository.saveLayout(updated)
+                repository.setActive(updated)
+                editingLayout = null
+            },
+        )
+        return
+    }
+
+    val actions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = {
+            val updated = activeLayout.copy(hapticFeedback = !activeLayout.hapticFeedback)
+            repository.saveLayout(updated)
+            repository.setActive(updated)
+        }) { Icon(Icons.Outlined.Vibration, contentDescription = "Toggle layout haptics") }
+        IconButton(onClick = {
+            val updated = activeLayout.copy(gyroEnabled = !activeLayout.gyroEnabled)
+            repository.saveLayout(updated)
+            repository.setActive(updated)
+        }) { Icon(Icons.Outlined.ScreenRotationAlt, contentDescription = "Toggle gyro") }
+        IconButton(onClick = { editingLayout = activeLayout }) {
+            Icon(Icons.Outlined.Edit, contentDescription = "Edit layout")
+        }
+        IconButton(onClick = { showLayoutPicker = true }) {
+            Icon(Icons.Outlined.Layers, contentDescription = "Layouts")
+        }
+    }
+    val canvas: @Composable (Modifier) -> Unit = { modifier ->
+        GamepadCanvasBox(modifier) { isLandscapeCanvas ->
+            val displayCanvas = remember(activeLayout, isLandscapeCanvas) { activeLayout.canvasFor(isLandscapeCanvas).fitIntoCanvas() }
+            RuntimeCanvas(
+                canvas = displayCanvas,
+                repository = repository,
+                gamepadAvailable = gamepadAvailable,
+                performHaptic = performHaptic,
             )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (!gamepadAvailable) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Gamepad input is not ready", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            gamepadReason ?: "The PC server has not enabled gamepad support yet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        }
+    }
+
+    if (landscape) {
+        GamepadLandscapeFrame(
+            title = activeLayout.name,
+            onBack = onBack,
+            actions = {
+                if (!gamepadAvailable) NxStatusPill("Not ready", Nx.warning)
+                actions()
+            },
+            canvas = canvas,
+        )
+    } else {
+        Scaffold(
+            topBar = { AppTopBar(title = activeLayout.name, onBack = onBack, actions = actions) },
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (!gamepadAvailable) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Gamepad input is not ready", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                gamepadReason ?: "The PC server has not enabled gamepad support yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AssistChip(onClick = { editingLayout = activeLayout }, label = { Text(if (activeLayout.layoutKind == "touch_mapper") "Touch Mapper" else "Classic Controller") })
-                AssistChip(onClick = {}, label = { Text("Mode: ${activeLayout.mode.uppercase()}") })
-                if (activeLayout.gyroEnabled) AssistChip(onClick = {}, label = { Text("Gyro On") })
-                if (activeLayout.accelEnabled) AssistChip(onClick = {}, label = { Text("Accel On") })
-            }
-
-            BoxWithConstraints(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF111827), Color(0xFF1F2937), Color(0xFF0F172A)))),
-            ) {
-                val isLandscape = maxWidth > maxHeight
-                val displayCanvas = remember(activeLayout, isLandscape) { activeLayout.canvasFor(isLandscape).fitIntoCanvas() }
-                RuntimeCanvas(
-                    canvas = displayCanvas,
-                    repository = repository,
-                    gamepadAvailable = gamepadAvailable,
-                    performHaptic = performHaptic,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AssistChip(onClick = { editingLayout = activeLayout }, label = { Text(if (activeLayout.layoutKind == "touch_mapper") "Touch Mapper" else "Classic Controller") })
+                    AssistChip(onClick = {}, label = { Text("Mode: ${activeLayout.mode.uppercase()}") })
+                    if (activeLayout.gyroEnabled) AssistChip(onClick = {}, label = { Text("Gyro On") })
+                    if (activeLayout.accelEnabled) AssistChip(onClick = {}, label = { Text("Accel On") })
+                }
+                canvas(Modifier.weight(1f).fillMaxWidth())
             }
         }
     }
@@ -260,18 +298,6 @@ fun GamepadScreen(
         )
     }
 
-    editingLayout?.let { layout ->
-        LayoutEditorDialog(
-            initialLayout = layout,
-            onDismiss = { editingLayout = null },
-            onSave = { updated ->
-                repository.saveLayout(updated)
-                repository.setActive(updated)
-                editingLayout = null
-            },
-        )
-    }
-
     renameLayout?.let { layout ->
         NameDialog(
             title = "Rename ${layout.name}",
@@ -310,14 +336,11 @@ private fun RuntimeCanvas(
         }
 
         canvas.elements.sortedBy { it.zIndex }.forEach { element ->
-            val left = maxWidth * (element.centerX - element.widthRatio / 2f)
-            val top = maxHeight * (element.centerY - element.heightRatio / 2f)
-            val width = maxWidth * element.widthRatio
-            val height = maxHeight * element.heightRatio
+            val bounds = padBounds(element, maxWidth, maxHeight)
             Box(
                 modifier = Modifier
-                    .offset(x = left, y = top)
-                    .size(width = width, height = height),
+                    .offset(x = bounds.left, y = bounds.top)
+                    .size(width = bounds.width, height = bounds.height),
             ) {
                 when (element.type) {
                     "button", "utility" -> RuntimeButton(element) { pressed ->
@@ -378,6 +401,7 @@ private fun RuntimeButton(
     Surface(
         modifier = Modifier
             .fillMaxSize()
+            .padding(3.dp) // keeps neighbouring buttons (BACK/START, L1/L2) visibly apart
             .pointerInput(element.id) {
                 detectTapGestures(onPress = {
                     onPressed(true)
@@ -417,7 +441,9 @@ fun RuntimeFaceButtons(onButton: (String, Boolean) -> Unit) {
         "B" to Color(0xFFF97316),
         "A" to Color(0xFF34D399),
     )
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Three buttons span the cluster, so each gets about a third of it: no overlap at any size.
+        val buttonSize = minOf(maxWidth, maxHeight) * 0.34f
         listOf(
             Triple("Y", Alignment.TopCenter, Modifier),
             Triple("X", Alignment.CenterStart, Modifier),
@@ -427,7 +453,7 @@ fun RuntimeFaceButtons(onButton: (String, Boolean) -> Unit) {
             Surface(
                 modifier = extraModifier
                     .align(alignment)
-                    .size(46.dp)
+                    .size(buttonSize)
                     .pointerInput(label) {
                         detectTapGestures(onPress = {
                             onButton(label, true)
@@ -454,11 +480,12 @@ fun RuntimeDpad(
 ) {
     val fill = element.fillColor.asGamepadColor(element.alpha)
     val stroke = element.strokeColor.asGamepadColor()
-    Box(modifier = Modifier.fillMaxSize()) {
-        DpadButton(Modifier.align(Alignment.TopCenter), "UP", fill, stroke, onDirection)
-        DpadButton(Modifier.align(Alignment.CenterStart), "LEFT", fill, stroke, onDirection)
-        DpadButton(Modifier.align(Alignment.CenterEnd), "RIGHT", fill, stroke, onDirection)
-        DpadButton(Modifier.align(Alignment.BottomCenter), "DOWN", fill, stroke, onDirection)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val buttonSize = minOf(maxWidth, maxHeight) * 0.34f
+        DpadButton(Modifier.align(Alignment.TopCenter).size(buttonSize), "UP", fill, stroke, onDirection)
+        DpadButton(Modifier.align(Alignment.CenterStart).size(buttonSize), "LEFT", fill, stroke, onDirection)
+        DpadButton(Modifier.align(Alignment.CenterEnd).size(buttonSize), "RIGHT", fill, stroke, onDirection)
+        DpadButton(Modifier.align(Alignment.BottomCenter).size(buttonSize), "DOWN", fill, stroke, onDirection)
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 color = fill.copy(alpha = 0.2f),
@@ -479,7 +506,6 @@ private fun DpadButton(
 ) {
     Surface(
         modifier = modifier
-            .size(46.dp)
             .pointerInput(label) {
                 detectTapGestures(onPress = {
                     onDirection(label, true)
@@ -487,7 +513,7 @@ private fun DpadButton(
                     onDirection(label, false)
                 })
             },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(28),
         color = fill.copy(alpha = 0.22f),
         border = androidx.compose.foundation.BorderStroke(1.3.dp, stroke.copy(alpha = 0.66f)),
     ) {
@@ -591,4 +617,86 @@ private fun Long.asGamepadColor(alphaMultiplier: Float = 1f): Color {
     val green = ((argb shr 8) and 0xFF) / 255f
     val blue = (argb and 0xFF) / 255f
     return Color(red = red, green = green, blue = blue, alpha = alpha)
+}
+
+/** Element types drawn as circles/clusters: kept square so they never stretch or overlap. */
+internal val RoundPadTypes = setOf("joystick", "dpad", "face_buttons")
+
+internal data class PadBounds(val left: Dp, val top: Dp, val width: Dp, val height: Dp)
+
+/**
+ * Where an element sits on a canvas of [maxWidth] x [maxHeight]. Shared by the play screen and the
+ * layout editor so both draw the same thing. Round controls get a square of side min(w, h) centred
+ * on their position; buttons and triggers keep their ratio-based rectangle.
+ */
+internal fun padBounds(element: LayoutElement, maxWidth: Dp, maxHeight: Dp): PadBounds {
+    var width = maxWidth * element.widthRatio
+    var height = maxHeight * element.heightRatio
+    if (element.type in RoundPadTypes) {
+        val side = minOf(width, height)
+        width = side
+        height = side
+    }
+    return PadBounds(
+        left = maxWidth * element.centerX - width / 2f,
+        top = maxHeight * element.centerY - height / 2f,
+        width = width,
+        height = height,
+    )
+}
+
+/** The gradient pad surface shared by play and editor. */
+@Composable
+internal fun GamepadCanvasBox(modifier: Modifier, content: @Composable (isLandscapeCanvas: Boolean) -> Unit) {
+    BoxWithConstraints(
+        modifier = modifier
+            .clip(RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF111827), Color(0xFF1F2937), Color(0xFF0F172A)))),
+    ) {
+        content(maxWidth > maxHeight)
+    }
+}
+
+/**
+ * Landscape frame for play and editor: one 48 dp strip (back, title, actions) and the canvas below,
+ * so the pad gets almost the whole screen. Both screens use it, so their canvases stay identical.
+ */
+@Composable
+internal fun GamepadLandscapeFrame(
+    title: String,
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+    canvas: @Composable (Modifier) -> Unit,
+) {
+    Box(Modifier.fillMaxSize().background(Nx.background)) {
+        ProvideContentColor(Nx.onBackground) {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
+                Row(
+                    Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    NxIconButton(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
+                    Text(title, style = NxType.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    actions()
+                }
+                canvas(Modifier.weight(1f).fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
+            }
+        }
+    }
+}
+
+/** Hides the status and navigation bars while [enabled] (swiping from an edge shows them briefly). */
+@Composable
+internal fun ImmersiveWhen(enabled: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(enabled, view) {
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (enabled && controller != null) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
 }

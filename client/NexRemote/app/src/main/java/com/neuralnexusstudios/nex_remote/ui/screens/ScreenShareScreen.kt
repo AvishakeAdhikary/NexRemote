@@ -20,20 +20,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.TouchApp
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Button
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.FilterChip
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.IconButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.neuralnexusstudios.nex_remote.ui.design.compat.SegmentedButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.SingleChoiceSegmentedButtonRow
+import com.composables.ui.components.Slider
+import com.composables.ui.components.Switch
+import com.composables.ui.components.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,7 +52,7 @@ import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.core.model.DisplayInfo
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ScreenShareScreen(
     appContainer: AppContainer,
@@ -158,7 +157,7 @@ fun ScreenShareScreen(
                             resolution = label
                             appContainer.screenShareRepository.setResolution(label)
                         },
-                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index, 4),
+                        shape = com.neuralnexusstudios.nex_remote.ui.design.compat.SegmentedButtonDefaults.itemShape(index, 4),
                     ) { Text(label) }
                 }
             }
@@ -179,7 +178,7 @@ fun ScreenShareScreen(
                                 },
                             )
                         },
-                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index, 4),
+                        shape = com.neuralnexusstudios.nex_remote.ui.design.compat.SegmentedButtonDefaults.itemShape(index, 4),
                     ) { Text(label) }
                 }
             }

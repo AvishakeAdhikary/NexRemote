@@ -1,6 +1,32 @@
 package com.neuralnexusstudios.nex_remote.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
+import com.composeunstyled.ProvideContentColor
+import com.neuralnexusstudios.nex_remote.ui.design.Nx
+import com.neuralnexusstudios.nex_remote.ui.design.NxButton
+import com.neuralnexusstudios.nex_remote.ui.design.NxChip
+import com.neuralnexusstudios.nex_remote.ui.design.NxIconButton
+import com.neuralnexusstudios.nex_remote.ui.design.NxSectionLabel
+import com.neuralnexusstudios.nex_remote.ui.design.NxTopBar
+import com.neuralnexusstudios.nex_remote.ui.design.NxType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -11,6 +37,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,15 +52,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Button
+import com.composables.ui.components.Checkbox
+import com.neuralnexusstudios.nex_remote.ui.design.compat.FilterChip
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.OutlinedTextField
+import com.composables.ui.components.Slider
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Surface
+import com.composables.ui.components.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +78,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.neuralnexusstudios.nex_remote.core.model.GamepadBindingGroup
 import com.neuralnexusstudios.nex_remote.core.model.GamepadLayoutConfig
 import com.neuralnexusstudios.nex_remote.core.model.LayoutElement
@@ -71,9 +97,16 @@ import com.neuralnexusstudios.nex_remote.core.model.normalizeForStorage
 import com.neuralnexusstudios.nex_remote.core.model.removeElement
 import com.neuralnexusstudios.nex_remote.core.model.replaceElement
 import com.neuralnexusstudios.nex_remote.core.model.withCanvas
-import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 import kotlin.math.roundToInt
 
+private enum class EditorPanel { Tools, Properties }
+
+/**
+ * Full-screen layout editor, shown by GamepadScreen in place of the play view. The frame (top bar,
+ * 12 dp padding, chip row, canvas with the same gradient and inset) mirrors GamepadScreen exactly, so
+ * the canvas here has the same size and aspect as the one you play on. Tools and properties open in
+ * a bottom panel over the canvas instead of shrinking it.
+ */
 @Composable
 fun LayoutEditorDialog(
     initialLayout: GamepadLayoutConfig,
@@ -82,102 +115,171 @@ fun LayoutEditorDialog(
 ) {
     val baseLayout = remember(initialLayout.id) { initialLayout.normalizeForStorage() }
     var draftLayout by remember(initialLayout.id) { mutableStateOf(baseLayout.fitBothOrientations()) }
-    var isLandscape by remember(initialLayout.id) { mutableStateOf(baseLayout.orientation != "portrait") }
+    // Start on the orientation the phone is in now, so the editor shows the canvas you just played on.
+    val deviceLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    var isLandscape by remember(initialLayout.id) { mutableStateOf(deviceLandscape) }
     var selectedElementId by remember(initialLayout.id) { mutableStateOf(draftLayout.canvasFor(isLandscape).elements.firstOrNull()?.id) }
     var editingMacroFor by remember { mutableStateOf<LayoutElement?>(null) }
+    var panel by remember { mutableStateOf<EditorPanel?>(null) }
 
     val currentCanvas = draftLayout.canvasFor(isLandscape)
     val selectedElement = draftLayout.elementById(isLandscape, selectedElementId)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                AppTopBar(
-                    title = "Edit Layout",
+    BackHandler { if (panel != null) panel = null else onDismiss() }
+
+    val chips: @Composable RowScope.() -> Unit = {
+        NxChip("Landscape", selected = isLandscape, onClick = {
+            isLandscape = true
+            draftLayout = draftLayout.fitCurrentOrientation(true)
+            selectedElementId = draftLayout.canvasFor(true).elements.firstOrNull()?.id
+        })
+        NxChip("Portrait", selected = !isLandscape, onClick = {
+            isLandscape = false
+            draftLayout = draftLayout.fitCurrentOrientation(false)
+            selectedElementId = draftLayout.canvasFor(false).elements.firstOrNull()?.id
+        })
+        NxChip("Add & tools", selected = panel == EditorPanel.Tools, icon = Icons.Outlined.Add, onClick = {
+            panel = if (panel == EditorPanel.Tools) null else EditorPanel.Tools
+        })
+        NxChip("Properties", selected = panel == EditorPanel.Properties, icon = Icons.Outlined.Tune, onClick = {
+            panel = if (panel == EditorPanel.Properties) null else EditorPanel.Properties
+        })
+    }
+    val saveButton: @Composable () -> Unit = {
+        NxButton("Save", onClick = { onSave(draftLayout.normalizeForStorage()) }, small = true, icon = Icons.Outlined.Check)
+    }
+    val editorCanvas: @Composable (Modifier) -> Unit = { modifier ->
+        EditorCanvas(
+            modifier = modifier,
+            layout = draftLayout,
+            isLandscape = isLandscape,
+            selectedElementId = selectedElementId,
+            onSelect = { selectedElementId = it },
+            onTransform = { elementId, panX, panY, zoom ->
+                val current = draftLayout.elementById(isLandscape, elementId) ?: return@EditorCanvas
+                val nextWidth = (current.widthRatio * zoom).coerceIn(0.06f, 0.44f)
+                val nextHeight = if (current.type in RoundPadTypes && !current.advancedSizing) {
+                    (current.heightRatio * zoom).coerceIn(0.06f, 0.44f)
+                } else {
+                    (current.heightRatio * zoom).coerceIn(0.04f, 0.44f)
+                }
+                val grid = if (currentCanvas.snapToGrid) 0.02f else 0f
+                val next = current.copy(
+                    centerX = snapToGrid(current.centerX + panX, grid),
+                    centerY = snapToGrid(current.centerY + panY, grid),
+                    widthRatio = snapToGrid(nextWidth, grid.takeIf { it > 0f } ?: 0f),
+                    heightRatio = snapToGrid(nextHeight, grid.takeIf { it > 0f } ?: 0f),
+                )
+                draftLayout = draftLayout.replaceElement(isLandscape, next).fitCurrentOrientation(isLandscape)
+            },
+        )
+    }
+
+    Box(Modifier.fillMaxSize().background(Nx.background)) {
+        ProvideContentColor(Nx.onBackground) {
+            if (deviceLandscape) {
+                // Same frame as the landscape play screen, so the canvas is identical.
+                GamepadLandscapeFrame(
+                    title = "Edit layout",
                     onBack = onDismiss,
                     actions = {
-                        TextButton(onClick = { onSave(draftLayout.normalizeForStorage()) }) { Text("Save") }
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { chips() }
+                        saveButton()
                     },
+                    canvas = editorCanvas,
                 )
-
-                EditorToolbar(
-                    layout = draftLayout,
-                    isLandscape = isLandscape,
-                    selectedElement = selectedElement,
-                    onOrientationChange = {
-                        isLandscape = it
-                        draftLayout = draftLayout.fitCurrentOrientation(it)
-                        selectedElementId = draftLayout.canvasFor(it).elements.firstOrNull()?.id
-                    },
-                    onAdd = { type ->
-                        val element = createLayoutElement(type, isLandscape, currentCanvas.elements.size)
-                        draftLayout = draftLayout.appendElement(isLandscape, element).fitCurrentOrientation(isLandscape)
-                        selectedElementId = element.id
-                    },
-                    onDuplicate = {
-                        selectedElement?.let {
-                            val duplicate = it.createDuplicate()
-                            draftLayout = draftLayout.appendElement(isLandscape, duplicate).fitCurrentOrientation(isLandscape)
-                            selectedElementId = duplicate.id
-                        }
-                    },
-                    onDelete = {
-                        selectedElementId?.let {
-                            draftLayout = draftLayout.removeElement(isLandscape, it)
-                            selectedElementId = draftLayout.canvasFor(isLandscape).elements.firstOrNull()?.id
-                        }
-                    },
-                    onFitCurrent = { draftLayout = draftLayout.fitCurrentOrientation(isLandscape) },
-                    onFitBoth = { draftLayout = draftLayout.fitBothOrientations() },
-                    onCenter = {
-                        draftLayout = draftLayout.centerSelection(isLandscape, selectedElementId).fitCurrentOrientation(isLandscape)
-                    },
-                    onResetOrientation = {
-                        draftLayout = draftLayout.withCanvas(isLandscape, baseLayout.canvasFor(isLandscape)).fitCurrentOrientation(isLandscape)
-                        selectedElementId = draftLayout.canvasFor(isLandscape).elements.firstOrNull()?.id
-                    },
-                    onDiscard = onDismiss,
-                )
-
-                EditorCanvas(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                    layout = draftLayout,
-                    isLandscape = isLandscape,
-                    selectedElementId = selectedElementId,
-                    onSelect = { selectedElementId = it },
-                    onTransform = { elementId, panX, panY, zoom ->
-                        val current = draftLayout.elementById(isLandscape, elementId) ?: return@EditorCanvas
-                        val nextWidth = (current.widthRatio * zoom).coerceIn(0.06f, 0.44f)
-                        val nextHeight = if (current.type in setOf("joystick", "dpad", "face_buttons") && !current.advancedSizing) {
-                            (current.heightRatio * zoom).coerceIn(0.06f, 0.44f)
-                        } else {
-                            (current.heightRatio * zoom).coerceIn(0.04f, 0.44f)
-                        }
-                        val grid = if (currentCanvas.snapToGrid) 0.02f else 0f
-                        val next = current.copy(
-                            centerX = snapToGrid(current.centerX + panX, grid),
-                            centerY = snapToGrid(current.centerY + panY, grid),
-                            widthRatio = snapToGrid(nextWidth, grid.takeIf { it > 0f } ?: 0f),
-                            heightRatio = snapToGrid(nextHeight, grid.takeIf { it > 0f } ?: 0f),
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    NxTopBar(title = "Edit layout", onBack = onDismiss, actions = { saveButton() })
+                    Column(
+                        modifier = Modifier.fillMaxWidth().weight(1f).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            content = chips,
                         )
-                        draftLayout = draftLayout.replaceElement(isLandscape, next).fitCurrentOrientation(isLandscape)
-                    },
-                )
+                        editorCanvas(Modifier.weight(1f).fillMaxWidth())
+                    }
+                    Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+                }
+            }
 
-                EditorPropertiesPanel(
-                    layout = draftLayout,
-                    selectedElement = selectedElement,
-                    isLandscape = isLandscape,
-                    onLayoutChange = { draftLayout = it },
-                    onElementChange = { draftLayout = draftLayout.replaceElement(isLandscape, it).fitCurrentOrientation(isLandscape) },
-                    onEditMacro = { editingMacroFor = it },
-                )
+            AnimatedVisibility(
+                visible = panel != null,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+            ) {
+                BoxWithConstraints {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = maxHeight * 0.55f)
+                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                            .background(Nx.panel)
+                            .border(1.dp, Nx.border, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                            .windowInsetsPadding(WindowInsets.navigationBars),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (panel == EditorPanel.Tools) "Add & tools" else selectedElement?.let { "Properties · ${it.label ?: it.type}" } ?: "Properties",
+                                style = NxType.title,
+                                modifier = Modifier.weight(1f),
+                            )
+                            NxIconButton(Icons.Outlined.Close, contentDescription = "Close panel", onClick = { panel = null })
+                        }
+                        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                            when (panel) {
+                                EditorPanel.Tools -> EditorToolbar(
+                                    selectedElement = selectedElement,
+                                    onAdd = { type ->
+                                        val element = createLayoutElement(type, isLandscape, currentCanvas.elements.size)
+                                        draftLayout = draftLayout.appendElement(isLandscape, element).fitCurrentOrientation(isLandscape)
+                                        selectedElementId = element.id
+                                        panel = null
+                                    },
+                                    onDuplicate = {
+                                        selectedElement?.let {
+                                            val duplicate = it.createDuplicate()
+                                            draftLayout = draftLayout.appendElement(isLandscape, duplicate).fitCurrentOrientation(isLandscape)
+                                            selectedElementId = duplicate.id
+                                        }
+                                    },
+                                    onDelete = {
+                                        selectedElementId?.let {
+                                            draftLayout = draftLayout.removeElement(isLandscape, it)
+                                            selectedElementId = draftLayout.canvasFor(isLandscape).elements.firstOrNull()?.id
+                                        }
+                                    },
+                                    onFitCurrent = { draftLayout = draftLayout.fitCurrentOrientation(isLandscape) },
+                                    onFitBoth = { draftLayout = draftLayout.fitBothOrientations() },
+                                    onCenter = {
+                                        draftLayout = draftLayout.centerSelection(isLandscape, selectedElementId).fitCurrentOrientation(isLandscape)
+                                    },
+                                    onResetOrientation = {
+                                        draftLayout = draftLayout.withCanvas(isLandscape, baseLayout.canvasFor(isLandscape)).fitCurrentOrientation(isLandscape)
+                                        selectedElementId = draftLayout.canvasFor(isLandscape).elements.firstOrNull()?.id
+                                    },
+                                    onDiscard = onDismiss,
+                                )
+                                EditorPanel.Properties -> EditorPropertiesPanel(
+                                    layout = draftLayout,
+                                    selectedElement = selectedElement,
+                                    isLandscape = isLandscape,
+                                    onLayoutChange = { draftLayout = it },
+                                    onElementChange = { draftLayout = draftLayout.replaceElement(isLandscape, it).fitCurrentOrientation(isLandscape) },
+                                    onEditMacro = { editingMacroFor = it },
+                                )
+                                null -> Unit
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -194,12 +296,10 @@ fun LayoutEditorDialog(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EditorToolbar(
-    layout: GamepadLayoutConfig,
-    isLandscape: Boolean,
     selectedElement: LayoutElement?,
-    onOrientationChange: (Boolean) -> Unit,
     onAdd: (String) -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
@@ -210,28 +310,35 @@ private fun EditorToolbar(
     onDiscard: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = isLandscape, onClick = { onOrientationChange(true) }, label = { Text("Landscape") })
-            FilterChip(selected = !isLandscape, onClick = { onOrientationChange(false) }, label = { Text("Portrait") })
-            FilterChip(selected = layout.mode == "xinput", onClick = {}, label = { Text(layout.mode.uppercase()) })
-            FilterChip(selected = layout.layoutKind == "touch_mapper", onClick = {}, label = { Text(if (layout.layoutKind == "touch_mapper") "Touch Mapper" else "Classic") })
-            TextButton(onClick = onFitCurrent) { Text("Fit Current") }
-            TextButton(onClick = onFitBoth) { Text("Fit Both") }
-            TextButton(onClick = onCenter, enabled = selectedElement != null) { Text("Center Selection") }
-            TextButton(onClick = onResetOrientation) { Text("Reset Orientation") }
-            TextButton(onClick = onDiscard) { Text("Discard") }
-        }
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("button", "utility", "trigger", "macro", "joystick", "dpad", "face_buttons").forEach { type ->
-                Button(onClick = { onAdd(type) }) { Text(type.replace('_', ' ')) }
+        NxSectionLabel("Add a control")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                "button" to "Button",
+                "utility" to "Utility",
+                "trigger" to "Trigger",
+                "macro" to "Macro",
+                "joystick" to "Joystick",
+                "dpad" to "D-pad",
+                "face_buttons" to "Face buttons",
+            ).forEach { (type, label) ->
+                NxChip(label, selected = false, icon = Icons.Outlined.Add, onClick = { onAdd(type) })
             }
-            TextButton(onClick = onDuplicate, enabled = selectedElement != null) { Text("Duplicate") }
-            TextButton(onClick = onDelete, enabled = selectedElement != null) { Text("Delete") }
+        }
+        NxSectionLabel("Selected control")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            NxChip("Duplicate", selected = false, enabled = selectedElement != null, onClick = onDuplicate)
+            NxChip("Center", selected = false, enabled = selectedElement != null, onClick = onCenter)
+            NxChip("Delete", selected = false, enabled = selectedElement != null, onClick = onDelete)
+        }
+        NxSectionLabel("Layout")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            NxChip("Fit this orientation", selected = false, onClick = onFitCurrent)
+            NxChip("Fit both", selected = false, onClick = onFitBoth)
+            NxChip("Reset orientation", selected = false, onClick = onResetOrientation)
+            NxChip("Discard changes", selected = false, onClick = onDiscard)
         }
     }
 }
@@ -245,68 +352,63 @@ private fun EditorCanvas(
     onSelect: (String) -> Unit,
     onTransform: (String, Float, Float, Float) -> Unit,
 ) {
-    BoxWithConstraints(
-        modifier = modifier
-            .background(
-                Brush.linearGradient(listOf(Color(0xFF151A25), Color(0xFF1E293B), Color(0xFF0F172A))),
-                RoundedCornerShape(28.dp),
-            ),
-    ) {
-        val canvas = layout.canvasFor(isLandscape)
-        val canvasWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val canvasHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+    // Same surface as GamepadScreen (GamepadCanvasBox); elements laid out in the same 12 dp inset.
+    GamepadCanvasBox(modifier) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
+            val canvas = layout.canvasFor(isLandscape)
+            val canvasWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+            val canvasHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
 
-        Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
-            val safeX = size.width * canvas.safePaddingRatio
-            val safeY = size.height * canvas.safePaddingRatio
-            if (canvas.showSafeZones) {
-                drawRoundRect(
-                    color = Color.White.copy(alpha = 0.12f),
-                    topLeft = Offset(safeX, safeY),
-                    size = Size(size.width - safeX * 2f, size.height - safeY * 2f),
-                    style = Stroke(width = 2.dp.toPx()),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx()),
-                )
-            }
-            if (canvas.snapToGrid) {
-                val columns = 10
-                val rows = 10
-                repeat(columns - 1) { index ->
-                    val x = size.width / columns * (index + 1)
-                    drawLine(Color.White.copy(alpha = 0.05f), Offset(x, 0f), Offset(x, size.height))
-                }
-                repeat(rows - 1) { index ->
-                    val y = size.height / rows * (index + 1)
-                    drawLine(Color.White.copy(alpha = 0.05f), Offset(0f, y), Offset(size.width, y))
-                }
-            }
-        }
-
-        canvas.elements.sortedBy { it.zIndex }.forEach { element ->
-            val normalized = element.normalizeForOrientation(isLandscape)
-            val left = maxWidth * (normalized.centerX - normalized.widthRatio / 2f)
-            val top = maxHeight * (normalized.centerY - normalized.heightRatio / 2f)
-            val width = maxWidth * normalized.widthRatio
-            val height = maxHeight * normalized.heightRatio
-            val isSelected = selectedElementId == element.id
-            Box(
-                modifier = Modifier
-                    .offset(x = left, y = top)
-                    .size(width = width, height = height)
-                    .border(
-                        width = if (isSelected) 2.dp else 1.dp,
-                        color = if (isSelected) Color(0xFFFACC15) else Color.White.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(if (element.type == "joystick" || element.type == "face_buttons") 999.dp else 20.dp),
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val safeX = size.width * canvas.safePaddingRatio
+                val safeY = size.height * canvas.safePaddingRatio
+                if (canvas.showSafeZones) {
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.12f),
+                        topLeft = Offset(safeX, safeY),
+                        size = Size(size.width - safeX * 2f, size.height - safeY * 2f),
+                        style = Stroke(width = 2.dp.toPx()),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx()),
                     )
-                    .pointerInput(element.id, isSelected, canvasWidthPx, canvasHeightPx) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            onSelect(element.id)
-                            if (element.locked) return@detectTransformGestures
-                            onTransform(element.id, pan.x / canvasWidthPx, pan.y / canvasHeightPx, zoom)
+                }
+                if (canvas.snapToGrid) {
+                    val columns = 10
+                    val rows = 10
+                    repeat(columns - 1) { index ->
+                        val x = size.width / columns * (index + 1)
+                        drawLine(Color.White.copy(alpha = 0.05f), Offset(x, 0f), Offset(x, size.height))
+                    }
+                    repeat(rows - 1) { index ->
+                        val y = size.height / rows * (index + 1)
+                        drawLine(Color.White.copy(alpha = 0.05f), Offset(0f, y), Offset(size.width, y))
+                    }
+                }
+            }
+
+            canvas.elements.sortedBy { it.zIndex }.forEach { element ->
+                val normalized = element.normalizeForOrientation(isLandscape)
+                val bounds = padBounds(normalized, maxWidth, maxHeight)
+                val isSelected = selectedElementId == element.id
+                Box(
+                    modifier = Modifier
+                        .offset(x = bounds.left, y = bounds.top)
+                        .size(width = bounds.width, height = bounds.height)
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) Nx.primary else Color.White.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(if (element.type in RoundPadTypes) 999.dp else 20.dp),
+                        )
+                        .pointerInput(element.id, isSelected, canvasWidthPx, canvasHeightPx) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                onSelect(element.id)
+                                if (element.locked) return@detectTransformGestures
+                                onTransform(element.id, pan.x / canvasWidthPx, pan.y / canvasHeightPx, zoom)
+                            }
                         }
-                    },
-            ) {
-                EditorElementPreview(element = normalized, isSelected = isSelected)
+                        .pointerInput(element.id) { detectTapGestures { onSelect(element.id) } },
+                ) {
+                    EditorElementPreview(element = normalized, isSelected = isSelected)
+                }
             }
         }
     }
@@ -368,9 +470,7 @@ private fun EditorPropertiesPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 320.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(12.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         OutlinedTextField(
@@ -396,7 +496,7 @@ private fun EditorPropertiesPanel(
         }
 
         selectedElement?.let { element ->
-            Text("Selected Control", style = MaterialTheme.typography.titleMedium)
+            Text("Selected control", style = MaterialTheme.typography.titleMedium)
             ElementProperties(
                 element = element,
                 onChange = onElementChange,

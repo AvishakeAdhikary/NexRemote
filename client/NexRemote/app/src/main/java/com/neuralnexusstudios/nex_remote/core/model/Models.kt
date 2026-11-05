@@ -67,7 +67,11 @@ data class AppSettings(
     val controlDisclosureAccepted: Boolean = false,
     val termsAcceptedAt: String? = null,
     val cameraDisclosureAccepted: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.Dark,
 )
+
+/** App colour scheme. Dark (red on black) is the default. */
+enum class ThemeMode { Dark, Light, System }
 
 @Serializable
 data class MacroStep(

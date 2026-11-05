@@ -26,20 +26,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Wifi
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
+import com.composables.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,7 +47,33 @@ import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.core.model.ConnectionStatus
 import com.neuralnexusstudios.nex_remote.core.model.ServerInfo
 import com.neuralnexusstudios.nex_remote.core.network.JsonCodec
-import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.LinkOff
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
+import com.composables.ui.components.HorizontalSeparator
+import com.composables.ui.components.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.Nx
+import com.neuralnexusstudios.nex_remote.ui.design.NxButton
+import com.neuralnexusstudios.nex_remote.ui.design.NxButtonKind
+import com.neuralnexusstudios.nex_remote.ui.design.NxCard
+import com.neuralnexusstudios.nex_remote.ui.design.NxDialog
+import com.neuralnexusstudios.nex_remote.ui.design.NxIconButton
+import com.neuralnexusstudios.nex_remote.ui.design.NxIconWell
+import com.neuralnexusstudios.nex_remote.ui.design.NxListRow
+import com.neuralnexusstudios.nex_remote.ui.design.NxScaffold
+import com.neuralnexusstudios.nex_remote.ui.design.NxSectionLabel
+import com.neuralnexusstudios.nex_remote.ui.design.NxSnackbarState
+import com.neuralnexusstudios.nex_remote.ui.design.NxSpinner
+import com.neuralnexusstudios.nex_remote.ui.design.NxStatusPill
+import com.neuralnexusstudios.nex_remote.ui.design.NxTextField
+import com.neuralnexusstudios.nex_remote.ui.design.NxTone
+import com.neuralnexusstudios.nex_remote.ui.design.NxType
+import com.neuralnexusstudios.nex_remote.ui.design.rememberNxSnackbarState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.serialization.json.contentOrNull
@@ -68,7 +81,6 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionScreen(
     appContainer: AppContainer,
@@ -76,7 +88,7 @@ fun ConnectionScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val snackbars = remember { SnackbarHostState() }
+    val snackbars = rememberNxSnackbarState()
     val servers = remember { mutableStateListOf<ServerInfo>() }
     val connectionState by appContainer.connectionRepository.connectionState.collectAsState()
     var discovering by remember { mutableStateOf(false) }
@@ -134,73 +146,118 @@ fun ConnectionScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = "Connect to PC",
-                onBack = onBack,
-                actions = {
-                    IconButton(onClick = { refreshDiscovery() }) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
-                    }
-                    IconButton(onClick = {
-                        if (!appContainer.preferences.settings.value.cameraDisclosureAccepted) {
-                            showDisclosure = true
-                        } else {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                                launchQrScanner(context, snackbars, onResult = { server ->
-                                    scope.launch {
-                                        connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it })
-                                    }
-                                })
-                            } else {
-                                scanLauncher.launch(Manifest.permission.CAMERA)
-                            }
-                        }
-                    }) {
-                        Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan QR")
-                    }
-                },
-            )
+    fun startQrFlow() {
+        if (!appContainer.preferences.settings.value.cameraDisclosureAccepted) {
+            showDisclosure = true
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchQrScanner(context, snackbars, onResult = { server ->
+                scope.launch { connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it }) }
+            })
+        } else {
+            scanLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    NxScaffold(
+        title = "Connect",
+        onBack = onBack,
+        snackbar = snackbars,
+        actions = {
+            NxIconButton(Icons.Outlined.Refresh, contentDescription = "Search again", onClick = { refreshDiscovery() })
+            NxIconButton(Icons.Outlined.QrCodeScanner, contentDescription = "Scan QR code", onClick = { startQrFlow() })
         },
-        snackbarHost = { SnackbarHost(hostState = snackbars) },
-    ) { innerPadding ->
+    ) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (connectionState == ConnectionStatus.CONNECTED) {
                 item {
-                    Card {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text("Connection active", style = MaterialTheme.typography.titleMedium)
-                            Text("Your phone is already connected to the NexRemote PC server.")
-                            Button(onClick = { appContainer.connectionRepository.disconnect() }) {
-                                Text("Disconnect")
-                            }
-                        }
+                    NxCard(Modifier.fillMaxWidth(), tone = NxTone.Success) {
+                        NxStatusPill("Connected", Nx.success)
+                        Text("You're connected", style = NxType.headline)
+                        Text("This phone is connected to NexRemote on your PC.", style = NxType.body, color = Nx.muted)
+                        NxButton("Disconnect", onClick = { appContainer.connectionRepository.disconnect() }, kind = NxButtonKind.Secondary, icon = Icons.Outlined.LinkOff)
                     }
                 }
             } else {
+                item { NxSectionLabel("On this network") }
+                item {
+                    NxCard(Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            NxIconWell(Icons.Outlined.Wifi)
+                            Column(Modifier.weight(1f)) {
+                                Text("Nearby PCs", style = NxType.title)
+                                Text(
+                                    when {
+                                        !appContainer.discoveryRepository.isWifiEnabled() -> "Wi-Fi is off"
+                                        discovering -> "Searching…"
+                                        servers.isEmpty() -> "None found yet"
+                                        else -> "${servers.size} found"
+                                    },
+                                    style = NxType.bodySmall,
+                                    color = Nx.muted,
+                                )
+                            }
+                            if (discovering) NxSpinner(size = 20.dp)
+                        }
+                        if (!appContainer.discoveryRepository.isWifiEnabled()) {
+                            Text("Turn on Wi-Fi to find PCs on your network. USB and direct address still work without it.", style = NxType.bodySmall, color = Nx.muted)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                NxButton("Wi-Fi settings", onClick = { showWifiPrompt = false; openWifiSettings(context) }, small = true)
+                                NxButton("Retry", onClick = { refreshDiscovery() }, kind = NxButtonKind.Outlined, small = true)
+                            }
+                        } else if (!discovering && servers.isEmpty()) {
+                            Text(
+                                "Make sure NexRemote is running on your PC and both devices are on the same network. You can also scan its QR code or enter its address.",
+                                style = NxType.bodySmall,
+                                color = Nx.muted,
+                            )
+                        }
+                        servers.forEach { server ->
+                            HorizontalSeparator()
+                            NxListRow(
+                                title = server.name,
+                                subtitle = "${server.address}:${server.port}",
+                                icon = Icons.Outlined.Computer,
+                                onClick = {
+                                    scope.launch { connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it }) }
+                                },
+                                trailing = {
+                                    if (connecting) NxSpinner(size = 18.dp)
+                                    else Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, tint = Nx.primary, modifier = Modifier.size(18.dp))
+                                },
+                            )
+                        }
+                    }
+                }
+
+                item { NxSectionLabel("Other ways") }
+                item {
+                    NxCard(Modifier.fillMaxWidth(), onClick = { startQrFlow() }, contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            NxIconWell(Icons.Outlined.QrCodeScanner)
+                            Column(Modifier.weight(1f)) {
+                                Text("Scan QR code", style = NxType.title)
+                                Text("Scan the code on the NexRemote dashboard on your PC.", style = NxType.bodySmall, color = Nx.muted)
+                            }
+                            Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, tint = Nx.muted, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
                 item {
                     UsbConnectionCard(
                         usbStatus = usbStatus,
                         connecting = connecting,
-                    onConnect = {
-                        scope.launch {
-                            val status = readUsbStatus(context)
-                            usbStatus = status
-                            val ready = status.connected && status.adbEnabled
-                            if (!ready) {
-                                showUsbGuide = true
-                                return@launch
-                            }
+                        onConnect = {
+                            scope.launch {
+                                val status = readUsbStatus(context)
+                                usbStatus = status
+                                if (!(status.connected && status.adbEnabled)) {
+                                    showUsbGuide = true
+                                    return@launch
+                                }
                                 connecting = true
                                 val success = runCatching { appContainer.connectionRepository.connectUsb() }.getOrDefault(false)
                                 connecting = false
@@ -208,7 +265,7 @@ fun ConnectionScreen(
                                     onBack()
                                 } else {
                                     showUsbGuide = true
-                                    snackbars.showSnackbar("USB connection failed. Check USB debugging, cable mode, and ADB authorization.")
+                                    snackbars.showSnackbar("USB connection failed. Check USB debugging, cable mode and ADB authorization.")
                                 }
                             }
                         },
@@ -218,94 +275,60 @@ fun ConnectionScreen(
                         },
                     )
                 }
-
                 item {
-                    Card {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(Icons.Outlined.Wifi, contentDescription = null)
-                                Text("Wi-Fi and QR", style = MaterialTheme.typography.titleMedium)
+                    NxCard(Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            NxIconWell(Icons.Outlined.Keyboard)
+                            Column(Modifier.weight(1f)) {
+                                Text("Enter address", style = NxType.title)
+                                Text("Type the IP shown on the PC dashboard.", style = NxType.bodySmall, color = Nx.muted)
                             }
-                            if (!appContainer.discoveryRepository.isWifiEnabled()) {
-                                Text("Wi-Fi is off. Turn it on to scan your local network for PCs.")
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = {
-                                        showWifiPrompt = false
-                                        openWifiSettings(context)
-                                    }) {
-                                        Text("Open Wi-Fi Settings")
-                                    }
-                                    OutlinedButton(onClick = { refreshDiscovery() }) {
-                                        Text("Retry")
-                                    }
+                        }
+                        NxTextField(
+                            value = host,
+                            onValueChange = { host = it },
+                            placeholder = "192.168.1.20",
+                            label = "PC address",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            NxTextField(
+                                value = securePort,
+                                onValueChange = { securePort = it },
+                                label = "Secure port",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                            NxTextField(
+                                value = insecurePort,
+                                onValueChange = { insecurePort = it },
+                                label = "Fallback port",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        NxButton(
+                            if (connecting) "Connecting…" else "Connect",
+                            enabled = host.isNotBlank() && !connecting,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                scope.launch {
+                                    connectToServer(
+                                        appContainer = appContainer,
+                                        server = ServerInfo(
+                                            name = host,
+                                            address = host.trim(),
+                                            port = securePort.toIntOrNull() ?: 8765,
+                                            portInsecure = insecurePort.toIntOrNull() ?: 8766,
+                                        ),
+                                        snackbars = snackbars,
+                                        onSuccess = onBack,
+                                        setConnecting = { connecting = it },
+                                    )
                                 }
-                            } else if (discovering) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    CircularProgressIndicator()
-                                    Text("Searching for PCs on your network...")
-                                }
-                            } else if (servers.isEmpty()) {
-                                Text("No PCs found yet. You can retry discovery, scan a QR code, or use direct host entry.")
-                            } else {
-                                Text("Discovered PCs", style = MaterialTheme.typography.titleSmall)
-                            }
-                        }
-                    }
-                }
-
-                items(servers, key = { it.id.ifBlank { it.address } }) { server ->
-                    Card(modifier = Modifier.fillMaxWidth().clickable {
-                        scope.launch {
-                            connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it })
-                        }
-                    }) {
-                        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Icon(Icons.Outlined.Computer, contentDescription = null)
-                            Column {
-                                Text(server.name, style = MaterialTheme.typography.titleMedium)
-                                Text("${server.address}:${server.port}", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Card {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text("Direct connection", style = MaterialTheme.typography.titleMedium)
-                            OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("Host / IP") }, modifier = Modifier.fillMaxWidth())
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                OutlinedTextField(value = securePort, onValueChange = { securePort = it }, label = { Text("Secure Port") }, modifier = Modifier.weight(1f))
-                                OutlinedTextField(value = insecurePort, onValueChange = { insecurePort = it }, label = { Text("Insecure Port") }, modifier = Modifier.weight(1f))
-                            }
-                            Button(
-                                enabled = host.isNotBlank() && !connecting,
-                                onClick = {
-                                    scope.launch {
-                                        connectToServer(
-                                            appContainer = appContainer,
-                                            server = ServerInfo(
-                                                name = host,
-                                                address = host,
-                                                port = securePort.toIntOrNull() ?: 8765,
-                                                portInsecure = insecurePort.toIntOrNull() ?: 8766,
-                                            ),
-                                            snackbars = snackbars,
-                                            onSuccess = onBack,
-                                            setConnecting = { connecting = it },
-                                        )
-                                    }
-                                },
-                            ) {
-                                Text(if (connecting) "Connecting..." else "Connect")
-                            }
-                        }
+                            },
+                        )
                     }
                 }
             }
@@ -313,55 +336,41 @@ fun ConnectionScreen(
     }
 
     if (showDisclosure) {
-        AlertDialog(
+        NxDialog(
             onDismissRequest = { showDisclosure = false },
-            title = { Text("Camera Disclosure") },
+            icon = Icons.Outlined.QrCodeScanner,
+            title = "Camera for QR pairing",
             text = {
                 Text(
-                    "NexRemote uses the camera only when you choose QR pairing so it can read a connection code shown by the NexRemote PC app. Camera data is not stored or sent to Neural Nexus Studios.",
+                    "NexRemote uses the camera only when you choose QR pairing, to read the connection code shown by NexRemote on your PC. Camera data is not stored or sent to Neural Nexus Studios.",
+                    style = NxType.body,
+                    color = Nx.muted,
                 )
             },
             confirmButton = {
-                Button(onClick = {
+                NxButton("Continue", onClick = {
                     showDisclosure = false
                     appContainer.preferences.setCameraDisclosureAccepted()
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        launchQrScanner(context, snackbars, onResult = { server ->
-                            scope.launch { connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it }) }
-                        })
-                    } else {
-                        scanLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                }) {
-                    Text("Continue")
-                }
+                    startQrFlow()
+                })
             },
-            dismissButton = {
-                OutlinedButton(onClick = { showDisclosure = false }) {
-                    Text("Cancel")
-                }
-            },
+            dismissButton = { NxButton("Cancel", onClick = { showDisclosure = false }, kind = NxButtonKind.Ghost) },
         )
     }
 
     if (showWifiPrompt) {
-        AlertDialog(
+        NxDialog(
             onDismissRequest = { showWifiPrompt = false },
-            title = { Text("Turn on Wi-Fi") },
-            text = { Text("Wi-Fi discovery needs Wi-Fi enabled. You can still use USB or a direct host entry without it.") },
+            icon = Icons.Outlined.Wifi,
+            title = "Turn on Wi-Fi",
+            text = { Text("Finding PCs needs Wi-Fi. You can still use USB or enter the PC's address.", style = NxType.body, color = Nx.muted) },
             confirmButton = {
-                Button(onClick = {
+                NxButton("Open settings", onClick = {
                     showWifiPrompt = false
                     openWifiSettings(context)
-                }) {
-                    Text("Open Settings")
-                }
+                })
             },
-            dismissButton = {
-                OutlinedButton(onClick = { showWifiPrompt = false }) {
-                    Text("Later")
-                }
-            },
+            dismissButton = { NxButton("Later", onClick = { showWifiPrompt = false }, kind = NxButtonKind.Ghost) },
         )
     }
 
@@ -397,38 +406,39 @@ private fun UsbConnectionCard(
     onConnect: () -> Unit,
     onGuide: () -> Unit,
 ) {
-    Card {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.Usb, contentDescription = null)
-                Text("USB (ADB Reverse)", style = MaterialTheme.typography.titleMedium)
+    val ready = usbStatus.connected && usbStatus.adbEnabled
+    NxCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            NxIconWell(Icons.Outlined.Usb)
+            Column(Modifier.weight(1f)) {
+                Text("USB", style = NxType.title)
+                Text("Lowest latency. Uses ADB reverse.", style = NxType.bodySmall, color = Nx.muted)
             }
-            Text(
+            NxStatusPill(
                 when {
-                    usbStatus.connected && usbStatus.adbEnabled ->
-                        "USB detected and ADB looks available. This is the fastest path when the cable is ready."
-                    usbStatus.connected ->
-                        "USB is connected, but ADB debugging is not ready yet. Enable USB debugging, accept the RSA prompt, and prefer a data-capable cable/mode."
-                    else ->
-                        "Connect your phone to the PC, enable USB debugging, and keep NexRemote Server running on the PC."
+                    ready -> "Ready"
+                    usbStatus.connected -> "Needs setup"
+                    else -> "Unplugged"
+                },
+                when {
+                    ready -> Nx.success
+                    usbStatus.connected -> Nx.warning
+                    else -> Nx.muted
                 },
             )
-            Text(
-                "Status: ${usbStatus.describe()}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onConnect, enabled = !connecting) {
-                    Text(if (connecting) "Connecting..." else "Connect via USB")
-                }
-                OutlinedButton(onClick = onGuide) {
-                    Icon(Icons.Outlined.Settings, contentDescription = null)
-                    Text("Setup Guide", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
+        }
+        Text(
+            when {
+                ready -> "USB debugging is on. Connect while NexRemote is running on your PC."
+                usbStatus.connected -> "Turn on USB debugging, accept the prompt on this phone, and use a data cable."
+                else -> "Plug this phone into your PC with USB debugging turned on."
+            },
+            style = NxType.bodySmall,
+            color = Nx.muted,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NxButton(if (connecting) "Connecting…" else "Connect via USB", onClick = onConnect, enabled = !connecting, small = true)
+            NxButton("Setup guide", onClick = onGuide, kind = NxButtonKind.Outlined, icon = Icons.Outlined.Settings, small = true)
         }
     }
 }
@@ -441,35 +451,29 @@ private fun UsbGuideDialog(
     onOpenDeviceInfo: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    AlertDialog(
+    NxDialog(
         onDismissRequest = onDismiss,
-        title = { Text("USB Setup Required") },
+        icon = Icons.Outlined.Usb,
+        title = "Set up USB",
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("NexRemote USB mode uses ADB reverse to connect to your PC server through localhost.")
-                Text("Current USB status: ${usbStatus.describe()}", style = MaterialTheme.typography.bodySmall)
-                Text("1. Enable Developer Options")
-                Text("2. Enable USB Debugging")
-                Text("3. Use a data-capable USB cable and a mode like File Transfer when needed")
-                Text("4. Accept the USB debugging authorization prompt")
-                Text("5. Keep the NexRemote PC server running so it can set up ADB reverse")
-            }
-        },
-        confirmButton = {
-            Button(onClick = onRetry) {
-                Text("Retry USB")
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onOpenDeveloperOptions) {
-                    Text("Developer Options")
-                }
-                OutlinedButton(onClick = onOpenDeviceInfo) {
-                    Text("Build Info")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("USB mode connects through ADB reverse to NexRemote on your PC.", style = NxType.body, color = Nx.muted)
+                Text("Status: ${usbStatus.describe()}", style = NxType.label, color = Nx.primary)
+                listOf(
+                    "Turn on Developer options (tap Build number 7 times).",
+                    "Turn on USB debugging.",
+                    "Use a data cable; pick File transfer if asked.",
+                    "Accept the USB debugging prompt on this phone.",
+                    "Keep NexRemote running on the PC.",
+                ).forEachIndexed { i, step -> Text("${i + 1}. $step", style = NxType.bodySmall) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NxButton("Developer options", onClick = onOpenDeveloperOptions, kind = NxButtonKind.Outlined, small = true)
+                    NxButton("About phone", onClick = onOpenDeviceInfo, kind = NxButtonKind.Outlined, small = true)
                 }
             }
         },
+        confirmButton = { NxButton("Retry USB", onClick = onRetry) },
+        dismissButton = { NxButton("Close", onClick = onDismiss, kind = NxButtonKind.Ghost) },
     )
 }
 
@@ -501,7 +505,7 @@ private fun openSettingsIntent(context: Context, action: String) {
 
 private fun launchQrScanner(
     context: Context,
-    snackbars: SnackbarHostState,
+    snackbars: NxSnackbarState,
     onResult: (ServerInfo) -> Unit,
 ) {
     val options = GmsBarcodeScannerOptions.Builder()
@@ -525,18 +529,18 @@ private fun launchQrScanner(
                     ),
                 )
             }.onFailure {
-                snackbars.currentSnackbarData?.dismiss()
+                snackbars.dismiss()
             }
         }
         .addOnFailureListener {
-            snackbars.currentSnackbarData?.dismiss()
+            snackbars.dismiss()
         }
 }
 
 private suspend fun connectToServer(
     appContainer: AppContainer,
     server: ServerInfo,
-    snackbars: SnackbarHostState,
+    snackbars: NxSnackbarState,
     onSuccess: () -> Unit,
     setConnecting: (Boolean) -> Unit,
 ) {

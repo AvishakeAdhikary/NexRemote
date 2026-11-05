@@ -13,15 +13,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Button
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.FilterChip
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.IconButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.composables.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CameraScreen(
     appContainer: AppContainer,

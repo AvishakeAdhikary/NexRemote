@@ -55,6 +55,17 @@ The live Android client is Kotlin/Jetpack Compose, not the older Flutter layout 
 - Models and serialized protocol data: `core/model/Models.kt`
 - Legal assets: `docs/` and `app/src/main/assets/legal/`
 
+## UI Toolkit
+
+The UI uses **Composables UI** (`com.composables:ui`, built on Compose Unstyled), not Material 3. `androidx.compose.material3` is not a dependency; don't add it back.
+
+- Theme: `ui/theme/Theme.kt` builds `NexRemoteTheme` with composeunstyled `buildTheme`, filling the Composables UI tokens (`com.composables.ui.theme.*`) with a red-on-black palette plus NexRemote tokens (`accentSoftColor`, `successColor`, `warningColor`, `panelRaisedColor`). Dark is the default; `ThemeMode` (Dark/Light/System) is a setting in `AppPreferences`. Inside `buildTheme`, refer to `com.composables.ui.theme.defaultIndication` and `defaultTextSelectionColors` by their full names, because the builder has same-named properties.
+- Design kit: `ui/design/Nx.kt` holds `Nx` (colours), `NxType` (type scale), `NxScaffold`/`NxTopBar`, `NxCard`, `NxButton`, `NxChip`, `NxSegmented`, `NxTextField` (a String adapter over the state-based TextField), `NxDialog`, `NxSpinner`, and `NxSnackbarState`. Home, Connection, Settings, Legal and the gamepad editor use it directly.
+- Migration bridge: `ui/design/compat/Bridge.kt` gives the remaining screens Material-shaped names (`Card`, `Button`, `Scaffold`, `MaterialTheme.typography`, ...) rendered with Composables UI. Port screens to `Nx*` over time and delete bridge entries when their last caller goes.
+- Composables UI's `Toolbar` doesn't constrain the title against its trailing actions, so use `NxTopBar`.
+- Gamepad: play and editor share `padBounds()`, `GamepadCanvasBox` and `GamepadLandscapeFrame` (in `GamepadScreen.kt`), so the editor canvas always matches the play canvas. Round controls (joystick, D-pad, face buttons) are kept square, and their inner buttons are sized as a fraction of the cluster. Landscape is immersive. The editor renders in place of the play screen, not in a Dialog.
+- Toolchain: Composables UI requires Kotlin 2.4 (the root `build.gradle.kts` pins the Kotlin Gradle plugin through the catalog) and `compileSdk` 37 (`targetSdk` stays 36).
+
 Use the existing Gradle wrapper from `client/NexRemote/`.
 
 ## Server Contract
@@ -96,7 +107,7 @@ Release builds already enable `isMinifyEnabled = true` and `isShrinkResources = 
 - Prefer removing unused dependencies, unused imports, unused resources, and dead code only after `rg` confirms no references and tests still pass.
 - Add R8/ProGuard keep rules only for proven shrinker breakage; keep them narrow.
 - Be careful with Kotlin serialization, JSON extension data, dynamic `Map<String, Any?>` payloads, and string-based protocol dispatch. R8 cannot infer server-used message names.
-- Do not remove `kotlinx.serialization`, OkHttp, Google code scanner, Compose Navigation, or Material/Compose dependencies unless there is a tested replacement. (Storage is plain `SharedPreferences`; DataStore and Security Crypto are not dependencies.)
+- Do not remove `kotlinx.serialization`, OkHttp, Google code scanner, Compose Navigation, Composables UI or the View-based Material library (used by the XML window theme) unless there is a tested replacement. (Storage is plain `SharedPreferences`; DataStore and Security Crypto are not dependencies.)
 - Do not add broad permissions or SDKs to solve review issues. Extra sensitive permissions can make Play review harder.
 - Keep `android.hardware.camera` optional unless the product requirements change.
 - Keep the app free of ads, subscriptions, analytics, and telemetry unless the user explicitly changes the product direction and updates privacy disclosures.

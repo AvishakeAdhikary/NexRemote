@@ -75,6 +75,11 @@ class AppPreferences(context: Context) {
         refresh()
     }
 
+    fun updateThemeMode(mode: com.neuralnexusstudios.nex_remote.core.model.ThemeMode) {
+        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+        refresh()
+    }
+
     fun updateUseSecureConnection(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_USE_SECURE_CONNECTION, enabled).apply()
         refresh()
@@ -138,6 +143,9 @@ class AppPreferences(context: Context) {
             controlDisclosureAccepted = prefs.getBoolean(KEY_CONTROL_DISCLOSURE, false),
             termsAcceptedAt = prefs.getString(KEY_TERMS_ACCEPTED_AT, null),
             cameraDisclosureAccepted = prefs.getBoolean(KEY_CAMERA_DISCLOSURE, false),
+            themeMode = prefs.getString(KEY_THEME_MODE, null)
+                ?.let { name -> com.neuralnexusstudios.nex_remote.core.model.ThemeMode.entries.firstOrNull { it.name == name } }
+                ?: com.neuralnexusstudios.nex_remote.core.model.ThemeMode.Dark,
         )
     }
 
@@ -178,6 +186,7 @@ class AppPreferences(context: Context) {
         private const val KEY_AUTO_CONNECT = "auto_connect"
         private const val KEY_GYRO_SENSITIVITY = "gyro_sensitivity"
         private const val KEY_APP_HAPTICS = "app_haptics"
+        private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_USE_SECURE_CONNECTION = "use_secure_connection"
         private const val KEY_TERMS_ACCEPTED = "terms_accepted"
         private const val KEY_TERMS_ACCEPTED_AT = "terms_accepted_at"

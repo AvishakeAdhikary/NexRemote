@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeDown
@@ -17,14 +18,13 @@ import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Button
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.composables.ui.components.Slider
+import com.composables.ui.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaControlScreen(
     appContainer: AppContainer,
@@ -126,8 +125,20 @@ private fun MediaButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    Button(onClick = onClick, modifier = modifier, enabled = enabled) {
-        Icon(icon, contentDescription = null)
-        Text(label, modifier = Modifier.padding(start = 8.dp))
+    // Round transport button: icon with a small caption underneath.
+    androidx.compose.foundation.layout.Column(
+        modifier = modifier,
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        com.neuralnexusstudios.nex_remote.ui.design.NxIconButton(
+            icon = icon,
+            contentDescription = label,
+            onClick = onClick,
+            enabled = enabled,
+            filled = true,
+            modifier = Modifier.size(60.dp),
+        )
+        Text(label, style = com.neuralnexusstudios.nex_remote.ui.design.NxType.label, color = com.neuralnexusstudios.nex_remote.ui.design.Nx.muted)
     }
 }

@@ -19,18 +19,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.FilterChip
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.IconButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.OutlinedTextField
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.neuralnexusstudios.nex_remote.ui.design.compat.SnackbarHost
+import com.neuralnexusstudios.nex_remote.ui.design.compat.SnackbarHostState
+import com.composables.ui.components.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,7 +53,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskManagerScreen(
     appContainer: AppContainer,
@@ -350,8 +348,8 @@ private fun ProcessRow(
             Text(process.pid.toString(), modifier = Modifier.weight(0.14f))
             Text("${"%.1f".format(process.cpu)}%", modifier = Modifier.weight(0.18f), color = cpuColor(process.cpu))
             Text(formatBytes(process.memory), modifier = Modifier.weight(0.18f))
-            TextButton(onClick = onEnd, modifier = Modifier.weight(0.18f), enabled = enabled) {
-                Text("End")
+            androidx.compose.foundation.layout.Box(Modifier.weight(0.18f)) {
+                com.neuralnexusstudios.nex_remote.ui.design.NxChip(label = "End", selected = false, onClick = onEnd, enabled = enabled)
             }
         }
     }

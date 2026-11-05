@@ -9,16 +9,15 @@ val keystoreProperties = rootProject.file("keystore.properties").takeIf { it.exi
 
 plugins {
     alias(libs.plugins.android.application)
-    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "com.neuralnexusstudios.nex_remote"
+    // compileSdk 37 is required by Compose 1.12 / com.composables:ui. targetSdk stays 36.
     compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
+        version = release(37)
     }
 
     defaultConfig {
@@ -90,8 +89,11 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
+    implementation(libs.composables.ui)
+    implementation(libs.composeunstyled)
+    implementation(libs.composeunstyled.theming)
+    implementation(libs.ripple.indication)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)

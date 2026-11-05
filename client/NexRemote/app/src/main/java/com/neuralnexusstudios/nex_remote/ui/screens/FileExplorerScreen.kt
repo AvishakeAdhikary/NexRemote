@@ -42,19 +42,18 @@ import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.AlertDialog
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Card
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Icon
+import com.neuralnexusstudios.nex_remote.ui.design.compat.IconButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.MaterialTheme
+import com.neuralnexusstudios.nex_remote.ui.design.compat.OutlinedButton
+import com.neuralnexusstudios.nex_remote.ui.design.compat.OutlinedTextField
+import com.neuralnexusstudios.nex_remote.ui.design.compat.Scaffold
+import com.neuralnexusstudios.nex_remote.ui.design.compat.SnackbarHost
+import com.neuralnexusstudios.nex_remote.ui.design.compat.SnackbarHostState
+import com.composables.ui.components.Text
+import com.neuralnexusstudios.nex_remote.ui.design.compat.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,7 +82,7 @@ private data class EditorState(
     val currentContent: String,
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileExplorerScreen(
     appContainer: AppContainer,
@@ -533,10 +532,7 @@ private fun SmallAction(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    TextButton(onClick = onClick, enabled = enabled) {
-        Icon(icon, contentDescription = null)
-        Text(label, modifier = Modifier.padding(start = 6.dp))
-    }
+    com.neuralnexusstudios.nex_remote.ui.design.NxChip(label = label, selected = false, onClick = onClick, icon = icon, enabled = enabled)
 }
 
 @Composable
