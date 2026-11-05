@@ -9,7 +9,7 @@ import { Button, cx } from "./ui";
 
 function Frame({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg p-6">
+    <div className="flex min-h-[calc(100vh-var(--titlebar-h))] items-center justify-center bg-bg p-6">
       <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-8 shadow-sm">
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent">{icon}</div>
@@ -36,7 +36,7 @@ export function LegalGate() {
 
   if (reading) {
     return (
-      <div className="flex h-screen flex-col bg-bg">
+      <div className="flex h-[calc(100vh-var(--titlebar-h))] flex-col bg-bg">
         <div className="flex items-center justify-between border-b border-border bg-surface px-6 py-3">
           <span className="font-semibold">{reading.doc.title}</span>
           <Button variant="primary" onClick={() => setReading(null)}>Done reading</Button>

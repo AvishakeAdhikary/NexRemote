@@ -44,7 +44,10 @@ const CSP = [
   "frame-ancestors 'none'",
 ].join("; ");
 
-app.setAppUserModelId("NeuralNexusStudios.NexRemote");
+// Inside the MSIX the package already supplies the AppUserModelID (tile icon, toasts); overriding it
+// detaches the window from the package. In unpackaged dev runs an explicit ID with no matching shortcut
+// makes the taskbar show electron.exe's icon, so only set it for a packaged non-Store build.
+if (app.isPackaged && !process.windowsStore) app.setAppUserModelId("NeuralNexusStudios.NexRemote");
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
@@ -87,6 +90,12 @@ function startUrl(route = "/"): string {
   return isDev ? `${DEV_URL}${route}` : `${APP_SCHEME}://${APP_HOST}${route}`;
 }
 
+// Caption-button colours follow the renderer's --surface/--text tokens (see globals.css).
+function titleBarOverlay(): Electron.TitleBarOverlayOptions {
+  const dark = nativeTheme.shouldUseDarkColors;
+  return { color: dark ? "#13161d" : "#ffffff", symbolColor: dark ? "#e8eaf0" : "#151821", height: 35 };
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1180,
@@ -97,6 +106,9 @@ function createWindow(): BrowserWindow {
     title: "NexRemote",
     icon: iconPath(),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0b0d12" : "#f6f7fb",
+    // Frameless look: no system title bar, Windows still draws the caption buttons (and snap layouts).
+    titleBarStyle: "hidden",
+    titleBarOverlay: titleBarOverlay(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -302,6 +314,9 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.handle("host:connection", () => sidecar.current);
   ipcMain.handle("app:open-external", (_event, url: string) => openExternal(url));
+  nativeTheme.on("updated", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitleBarOverlay(titleBarOverlay());
+  });
   ipcMain.handle("app:set-theme", (_event, theme: "system" | "light" | "dark") => {
     nativeTheme.themeSource = theme;
   });

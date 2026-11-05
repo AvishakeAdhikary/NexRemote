@@ -15,7 +15,7 @@ export default function PhonePage() {
   const active = shares.find((s) => s.device_id === selected) ?? shares[0];
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col">
+    <div className="flex h-[calc(100vh-4rem-var(--titlebar-h))] flex-col">
       <PageHeader
         title="Phone screen"
         description="See a connected phone's screen here. Start sharing from the NexRemote app on the phone (Share my screen)."

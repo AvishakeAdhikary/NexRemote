@@ -113,6 +113,10 @@ windows_app/
 - Keep `package.json` `dependencies` empty. Next compiles the renderer into `out/`, and the main process uses only Node and Electron. Anything listed under `dependencies` gets copied into the package (moving them out saved about 70 MB).
 - In the package the sidecar lives at `app\resources\server\nexremote-server.exe`. The manifest's firewall rules must name that path, because the sidecar, not `NexRemote.exe`, owns ports 8765/8766/37020.
 - The frozen sidecar is about 195 MB, mostly OpenCV and NumPy. If size matters, swap OpenCV for a lighter camera backend.
+- Icons: every raster in `desktop/build/` (MSIX tiles in `build/appx/`, `logo.png`, `logo.ico`) is generated from `build/logo.svg` by `node scripts/gen-icons.mjs`. Rerun it after changing the logo. ICO entries under 256 px must stay DIBs (PNG-compressed small entries make Windows fall back to the exe icon). `desktop/build/` is tracked despite the root `build/` ignore (see `desktop/.gitignore`).
+- Store identity (verified in Partner Center, Store ID `9P4RN2KGGJXC`): `NeuralNexusStudios.NexRemote`, publisher `CN=8559855F-6955-4418-A6D8-835C3238CF34`, PFN `NeuralNexusStudios.NexRemote_xn1z20vv2c49w`.
+- Window chrome: frameless (`titleBarStyle: "hidden"` + `titleBarOverlay`). Windows draws the caption buttons; `src/components/TitleBar.tsx` is the drag strip, and its height is `--titlebar-h` in `globals.css`. Use `h-[calc(100vh-var(--titlebar-h))]` instead of `h-screen`. Overlay colours in `electron/main.ts` must match the `--surface`/`--text` tokens.
+- Don't call `app.setAppUserModelId` inside the MSIX (the package supplies it). Unpackaged dev runs show electron.exe's icon in the taskbar; that is expected.
 - Running Electron from a VS Code terminal: unset `ELECTRON_RUN_AS_NODE` (`env -u ELECTRON_RUN_AS_NODE ...`), or Electron starts as plain Node.
 
 ## Store-safety rules

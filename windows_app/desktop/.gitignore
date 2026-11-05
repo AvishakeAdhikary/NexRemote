@@ -5,3 +5,7 @@ dist-electron/
 release/
 next-env.d.ts
 *.tsbuildinfo
+
+# build/ holds electron-builder resources (MSIX manifest, icons), not output. Re-include it
+# over the root build/ rule.
+!build/

@@ -2,6 +2,7 @@
 
 /* Theme tokens. data-theme on <html> is set from the user's setting; "system" follows the OS. */
 :root {
+  --titlebar-h: 36px;
   --bg: #f5f6f9;
   --surface: #ffffff;
   --surface-2: #f0f2f6;
@@ -132,4 +133,15 @@ body {
 .prose-legal a {
   color: var(--accent);
   text-decoration: underline;
+}
+
+/* Frameless window: the title strip drags the window; interactive children opt out. */
+.app-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.app-drag a,
+.app-drag button,
+.app-drag input {
+  -webkit-app-region: no-drag;
 }

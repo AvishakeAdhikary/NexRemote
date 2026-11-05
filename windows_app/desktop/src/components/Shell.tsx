@@ -43,7 +43,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   if (!state) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 text-muted">
+      <div className="flex h-[calc(100vh-var(--titlebar-h))] flex-col items-center justify-center gap-3 text-muted">
         <LoaderCircle className="animate-spin" />
         <span>Starting NexRemote host…</span>
       </div>
@@ -54,7 +54,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const shares = state.phone_shares.length;
   return (
-    <div className="flex h-screen">
+    <div className="flex h-[calc(100vh-var(--titlebar-h))]">
       <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface">
         <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
