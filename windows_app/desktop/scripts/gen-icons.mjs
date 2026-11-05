@@ -48,7 +48,8 @@ for (const s of scales) {
 }
 for (const t of [16, 24, 32, 48, 256]) {
   jobs.push(tile(`Square44x44Logo.targetsize-${t}.png`, t, t, 1));
-  jobs.push(tile(`Square44x44Logo.altform-unplated_targetsize-${t}.png`, t, t, 1));
+  // 24 px unplated is spelled targetsize-24_altform-unplated below; both spellings would collide in makepri.
+  if (t !== 24) jobs.push(tile(`Square44x44Logo.altform-unplated_targetsize-${t}.png`, t, t, 1));
   jobs.push(tile(`Square44x44Logo.altform-lightunplated_targetsize-${t}.png`, t, t, 1));
 }
 jobs.push(tile("Square44x44Logo.targetsize-24_altform-unplated.png", 24, 24, 1));
