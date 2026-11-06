@@ -150,3 +150,22 @@ For lower policy risk, do not market NexRemote as a child-directed product. The 
 - **After upload:** complete the Foreground service (mediaProjection) and Accessibility declarations that appear for the new bundle, using the video https://youtu.be/H63TporcmqY. Then re-check Data safety and send for review.
 - **Privacy policy:** URL switched and sent for review.
 - **Production access:** all three closed-test criteria show as met. The application form is pre-filled from an earlier draft with claims about testers (recruitment, engagement, Google Forms feedback). It was deliberately **not** submitted: the developer must confirm those answers are true first.
+
+### Release 1.2 (2026-11-06)
+
+**Microsoft Store**
+- Submission 3 is in certification. Submission 2 (1.1.0.0) passed and is live.
+- Package: `NexRemote_1.2.0.0_x64.msixbundle`.
+- What's new and the description cover:
+  - The multi-phone grid.
+  - Full-screen phone control.
+  - Per-phone audio (needs Android 1.2).
+  - Colour palettes.
+  - Faster, more accurate Task Manager.
+- Four new screenshots in the Nexus red palette, with names anonymized.
+
+**Google Play**
+- **Bundle:** upload `dist/store-assets/nexremote-1.2.0-vc4.aab` (1.2.0, versionCode 4, new upload key) instead of the never-uploaded vc3 bundle. The reset key is valid from 2026-11-07 21:48 UTC.
+- **New permission:** `RECORD_AUDIO`, used only for AudioPlaybackCapture behind "Let the PC hear this phone". The microphone is never recorded, and the privacy policy (2026-11-06) covers it.
+- **Data safety:** keep the "no data collected" position. Phone audio, like the screen, goes only to the user's own PC and never to the developer.
+- **Video:** if Play asks about the permission, explain playback capture during screen sharing. The existing FGS (mediaProjection) video still applies.

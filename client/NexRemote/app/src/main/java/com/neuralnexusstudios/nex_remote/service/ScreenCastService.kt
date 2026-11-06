@@ -254,7 +254,7 @@ class ScreenCastService : Service() {
         }
         if (audio != null) return true
         val p = projection ?: return false
-        if (!running || !PhoneAudioCapture.canCapture(this) || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !running || !PhoneAudioCapture.canCapture(this)) return false
         val capture = PhoneAudioCapture(p) { pts, pcm -> repository.onAudioChunk(pts, pcm) }
         if (!capture.start()) return false
         audio = capture

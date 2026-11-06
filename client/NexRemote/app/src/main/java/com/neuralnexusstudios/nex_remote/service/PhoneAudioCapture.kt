@@ -23,7 +23,6 @@ import androidx.core.content.ContextCompat
  * This never opens the microphone. Android still requires the RECORD_AUDIO permission for playback
  * capture, and apps can opt out of being captured (their audio is then silent here).
  */
-@RequiresApi(Build.VERSION_CODES.Q)
 class PhoneAudioCapture(
     private val projection: MediaProjection,
     private val onChunk: (ptsUs: Long, pcm: ByteArray) -> Unit,
@@ -32,6 +31,7 @@ class PhoneAudioCapture(
     private var record: AudioRecord? = null
     private var thread: Thread? = null
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     @SuppressLint("MissingPermission") // checked by the caller via canCapture()
     fun start(): Boolean {
         if (running) return true
