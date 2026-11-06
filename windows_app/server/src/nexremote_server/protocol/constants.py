@@ -25,5 +25,7 @@ SCREEN_FRAME = b"SCRN"
 CAMERA_FRAME = b"CAMF"
 SCREEN_AUDIO_FRAME = b"AUDF"
 PHONE_SCREEN_FRAME = b"PSCR"
+# Phone -> PC playback audio while sharing: 8-byte big-endian pts (µs) + PCM16 LE interleaved.
+PHONE_AUDIO_FRAME = b"PAUD"
 
-LEGAL_DOCUMENT_VERSION = "2026-11-01"  # bump whenever a bundled legal document changes
+LEGAL_DOCUMENT_VERSION = "2026-11-06"  # bump whenever a bundled legal document changes

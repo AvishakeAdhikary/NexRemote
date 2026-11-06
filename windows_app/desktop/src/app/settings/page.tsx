@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, PageHeader, SettingRow, Switch, TextInput } from "@/components/ui";
 import { useHost } from "@/lib/host";
-import { useSettings } from "@/lib/settings";
+import { PALETTES, useSettings } from "@/lib/settings";
 
 interface StartupState {
   supported: boolean;
@@ -76,6 +76,31 @@ export default function SettingsPage() {
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
+          </SettingRow>
+          <SettingRow title="Color palette" description="Accent colours for the whole app. Nexus red matches the Android app.">
+            <div className="flex flex-wrap justify-end gap-2" role="radiogroup" aria-label="Color palette">
+              {PALETTES.map((p) => {
+                const selected = (settings.color_palette ?? "nexus") === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    role="radio"
+                    aria-checked={selected}
+                    title={p.name}
+                    onClick={() => void patch({ color_palette: p.id })}
+                    className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[12px] ${
+                      selected ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:bg-surface-2"
+                    }`}
+                  >
+                    <span
+                      className="h-3.5 w-3.5 rounded-full ring-1 ring-black/10"
+                      style={{ background: `linear-gradient(135deg, ${p.swatch[0]} 50%, ${p.swatch[1]} 50%)` }}
+                    />
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
           </SettingRow>
           <SettingRow
             title="Start with Windows"

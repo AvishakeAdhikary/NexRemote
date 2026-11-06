@@ -25,6 +25,7 @@ import com.neuralnexusstudios.nex_remote.ui.design.NxButton
 import com.neuralnexusstudios.nex_remote.ui.design.NxChip
 import com.neuralnexusstudios.nex_remote.ui.design.NxIconButton
 import com.neuralnexusstudios.nex_remote.ui.design.NxSectionLabel
+import com.neuralnexusstudios.nex_remote.ui.design.NxSwitchRow
 import com.neuralnexusstudios.nex_remote.ui.design.NxTopBar
 import com.neuralnexusstudios.nex_remote.ui.design.NxType
 import androidx.compose.foundation.background
@@ -479,11 +480,24 @@ private fun EditorPropertiesPanel(
             label = { Text("Layout Name") },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SettingCheckbox("Gyro", layout.gyroEnabled) { onLayoutChange(layout.copy(gyroEnabled = it)) }
-            SettingCheckbox("Accel", layout.accelEnabled) { onLayoutChange(layout.copy(accelEnabled = it)) }
-            SettingCheckbox("Haptics", layout.hapticFeedback) { onLayoutChange(layout.copy(hapticFeedback = it)) }
-        }
+        NxSwitchRow(
+            title = "Vibrate on press",
+            subtitle = "Feel a click when you press and release controls on this layout.",
+            checked = layout.hapticFeedback,
+            onCheckedChange = { onLayoutChange(layout.copy(hapticFeedback = it)) },
+        )
+        NxSwitchRow(
+            title = "Gyroscope aiming",
+            subtitle = "Tilt the phone to move the right stick.",
+            checked = layout.gyroEnabled,
+            onCheckedChange = { onLayoutChange(layout.copy(gyroEnabled = it)) },
+        )
+        NxSwitchRow(
+            title = "Accelerometer",
+            subtitle = "Use tilt from the accelerometer when there is no gyroscope.",
+            checked = layout.accelEnabled,
+            onCheckedChange = { onLayoutChange(layout.copy(accelEnabled = it)) },
+        )
         Text("Canvas", style = MaterialTheme.typography.titleSmall)
         SliderField("Background Dim", layout.canvasFor(isLandscape).backgroundDim, 0f..0.45f) { value ->
             onLayoutChange(layout.withCanvas(isLandscape, layout.canvasFor(isLandscape).copy(backgroundDim = value)))

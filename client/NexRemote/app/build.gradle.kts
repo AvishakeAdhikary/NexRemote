@@ -24,8 +24,8 @@ android {
         applicationId = "com.neuralnexusstudios.nex_remote"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.ui)
     implementation(libs.composables.ui)
+    implementation(libs.vico.compose)
     implementation(libs.composeunstyled)
     implementation(libs.composeunstyled.theming)
     implementation(libs.ripple.indication)

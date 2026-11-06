@@ -1,6 +1,23 @@
 package com.neuralnexusstudios.nex_remote.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -199,7 +216,7 @@ fun FileExplorerScreen(
             drives = drives,
             files = files,
             search = search,
-            canGoUp = history.size > 1,
+            canGoUp = parentPathOf(currentPath) != null,
             hasClipboard = clipboardPath != null,
             enabled = fileTransferAvailable,
             featureReason = fileTransferReason,
@@ -223,9 +240,16 @@ fun FileExplorerScreen(
             },
             onRefreshDrives = { if (fileTransferAvailable) refreshDrives() },
             onUp = {
+                val parent = parentPathOf(currentPath)
+                if (fileTransferAvailable && parent != null) {
+                    search = ""
+                    load(parent)
+                }
+            },
+            onNavigate = { path ->
                 if (fileTransferAvailable) {
-                    history.removeAt(history.lastIndex)
-                    load(history.last())
+                    search = ""
+                    load(path)
                 }
             },
             onSelectDrive = { drive ->
@@ -354,6 +378,7 @@ private fun FileBrowserPage(
     onReload: () -> Unit,
     onRefreshDrives: () -> Unit,
     onUp: () -> Unit,
+    onNavigate: (String) -> Unit,
     onSelectDrive: (DriveInfo) -> Unit,
     onNewFolder: () -> Unit,
     onNewFile: () -> Unit,
@@ -367,17 +392,18 @@ private fun FileBrowserPage(
     onProperties: (FileItem) -> Unit,
     onDelete: (FileItem) -> Unit,
 ) {
+    // Back goes up one folder until the drive root, then leaves the screen.
+    BackHandler(enabled = canGoUp && enabled, onBack = onUp)
+    // Each folder opens at the top.
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(currentPath) { listState.scrollToItem(0) }
+
     Scaffold(
         topBar = {
             AppTopBar(
-                title = "File Explorer",
+                title = "Files",
                 onBack = onBack,
                 actions = {
-                    if (canGoUp) {
-                        IconButton(onClick = onUp) {
-                            Icon(Icons.Outlined.UploadFile, contentDescription = "Up")
-                        }
-                    }
                     IconButton(onClick = onNewFolder) {
                         Icon(Icons.Outlined.CreateNewFolder, contentDescription = "New Folder")
                     }
@@ -400,56 +426,92 @@ private fun FileBrowserPage(
         },
         snackbarHost = { SnackbarHost(snackbars) },
     ) { innerPadding ->
-        Column(
+        // Header and files scroll together so the list has room in landscape too.
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(innerPadding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (!enabled) {
-                Card {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("File Explorer is not ready", style = MaterialTheme.typography.titleMedium)
-                        Text(featureReason ?: "The PC server has not enabled file transfer yet.", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-
-            OutlinedTextField(
-                value = search,
-                onValueChange = onSearchChange,
-                label = { Text("Search files") },
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    Row {
-                        TextButton(onClick = onSearch) { Text("Search") }
-                        if (search.isNotBlank()) {
-                            TextButton(onClick = onClearSearch) { Text("Clear") }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (!enabled) {
+                        Card {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("File Explorer is not ready", style = MaterialTheme.typography.titleMedium)
+                                Text(featureReason ?: "The PC server has not enabled file transfer yet.", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
-                },
-            )
 
-            Text(currentPath, style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = onSearchChange,
+                        label = { Text("Search files") },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            Row {
+                                TextButton(onClick = onSearch) { Text("Search") }
+                                if (search.isNotBlank()) {
+                                    TextButton(onClick = onClearSearch) { Text("Clear") }
+                                }
+                            }
+                        },
+                    )
 
-            if (drives.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    drives.forEach { drive ->
-                        OutlinedButton(
-                            onClick = { onSelectDrive(drive) },
-                            enabled = enabled,
+                    // Location bar: Up + clickable breadcrumbs (C: › Users › me).
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        com.neuralnexusstudios.nex_remote.ui.design.NxButton(
+                            "Up",
+                            onClick = onUp,
+                            enabled = canGoUp && enabled,
+                            kind = com.neuralnexusstudios.nex_remote.ui.design.NxButtonKind.Secondary,
+                            icon = Icons.Outlined.ArrowUpward,
+                            small = true,
+                        )
+                        val crumbs = breadcrumbsOf(currentPath)
+                        val crumbScroll = rememberScrollState()
+                        LaunchedEffect(currentPath) { crumbScroll.scrollTo(crumbScroll.maxValue) }
+                        Row(
+                            modifier = Modifier.weight(1f).horizontalScroll(crumbScroll),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            Text((drive.label?.takeIf { it.isNotBlank() }?.plus(" • ") ?: "") + drive.path)
+                            crumbs.forEachIndexed { index, (label, path) ->
+                                if (index > 0) Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val last = index == crumbs.lastIndex
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (last) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(enabled = enabled && !last) { onNavigate(path) }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    if (drives.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            drives.forEach { drive ->
+                                OutlinedButton(
+                                    onClick = { onSelectDrive(drive) },
+                                    enabled = enabled,
+                                ) {
+                                    Text((drive.label?.takeIf { it.isNotBlank() }?.plus(" • ") ?: "") + drive.path)
+                                }
+                            }
                         }
                     }
                 }
             }
-
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(files, key = { it.path }) { item ->
                     FileItemCard(
                         item = item,
@@ -463,7 +525,6 @@ private fun FileBrowserPage(
                         onDelete = { onDelete(item) },
                     )
                 }
-            }
         }
     }
 }
@@ -547,8 +608,15 @@ private fun FileEditorPage(
     val isDirty = state.currentContent != state.originalContent
     val verticalScroll = rememberScrollState()
     val horizontalScroll = rememberScrollState()
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     BackHandler(onBack = onBack)
+
+    fun startTyping() {
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
 
     Scaffold(
         topBar = {
@@ -556,6 +624,9 @@ private fun FileEditorPage(
                 title = state.name,
                 onBack = onBack,
                 actions = {
+                    IconButton(onClick = { startTyping() }) {
+                        Icon(Icons.Outlined.Keyboard, contentDescription = "Show keyboard")
+                    }
                     IconButton(onClick = onToggleLineNumbers) {
                         Icon(
                             if (showLineNumbers) Icons.Outlined.Visibility else Icons.Outlined.TextFields,
@@ -573,6 +644,7 @@ private fun FileEditorPage(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding() // keep the text above the keyboard
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -584,55 +656,81 @@ private fun FileEditorPage(
                         style = MaterialTheme.typography.labelLarge,
                     )
                 }
-                Text(state.path, style = MaterialTheme.typography.bodySmall)
+                Text(state.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            Row(
+            // One vertical scroll for numbers and text so they stay aligned; lines don't wrap and
+            // scroll sideways. Tapping anywhere in the editor focuses it and opens the keyboard.
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .pointerInput(Unit) { detectTapGestures { startTyping() } }
+                    .verticalScroll(verticalScroll)
                     .padding(12.dp),
             ) {
-                if (showLineNumbers) {
-                    Text(
-                        text = lineNumbers(state.currentContent),
+                Row {
+                    if (showLineNumbers) {
+                        Text(
+                            text = lineNumbers(state.currentContent),
+                            modifier = Modifier.padding(end = 10.dp),
+                            style = TextStyle(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            ),
+                        )
+                    }
+                    BasicTextField(
+                        value = state.currentContent,
+                        onValueChange = onChange,
                         modifier = Modifier
-                            .width(48.dp)
-                            .padding(end = 8.dp)
-                            .horizontalScroll(rememberScrollState())
-                            .clickable(enabled = false) { }
-                            .padding(top = 6.dp),
-                        style = TextStyle(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            .weight(1f)
+                            .horizontalScroll(horizontalScroll)
+                            .focusRequester(focusRequester),
+                        textStyle = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Ascii,
                         ),
                     )
                 }
-                BasicTextField(
-                    value = state.currentContent,
-                    onValueChange = onChange,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .horizontalScroll(horizontalScroll)
-                        .padding(top = 6.dp),
-                    textStyle = TextStyle(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    ),
-                    decorationBox = { inner ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable(enabled = false) { }
-                                .padding(bottom = 24.dp),
-                        ) {
-                            inner()
-                        }
-                    },
-                )
             }
         }
     }
+}
+
+/** Parent folder of a Windows path, or null at a drive root ("C:\\") or for an empty path. */
+internal fun parentPathOf(path: String): String? {
+    val trimmed = path.trimEnd('\\', '/')
+    if (trimmed.isEmpty() || (trimmed.length == 2 && trimmed[1] == ':')) return null
+    val cut = trimmed.lastIndexOfAny(charArrayOf('\\', '/'))
+    if (cut < 0) return null
+    val parent = trimmed.substring(0, cut)
+    return if (parent.length == 2 && parent[1] == ':') "$parent\\" else parent.ifEmpty { null }
+}
+
+/** Breadcrumbs for a Windows path: [("C:", "C:\\"), ("Users", "C:\\Users"), ...]. */
+internal fun breadcrumbsOf(path: String): List<Pair<String, String>> {
+    val parts = path.trimEnd('\\', '/').split('\\', '/').filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return listOf(path to path)
+    val crumbs = mutableListOf<Pair<String, String>>()
+    var acc = ""
+    parts.forEachIndexed { index, part ->
+        acc = if (index == 0) "$part\\" else if (index == 1) "$acc$part" else "$acc\\$part"
+        crumbs += part to acc
+    }
+    return crumbs
 }
 
 @Composable

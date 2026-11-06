@@ -15,6 +15,9 @@
     <!-- Phone screen sharing: a user-started foreground service that captures the screen. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- Only for "Let the PC hear this phone": Android requires it for AudioPlaybackCapture
+         (sound other apps play during screen sharing). The microphone is never recorded. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application

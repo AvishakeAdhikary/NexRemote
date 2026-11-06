@@ -16,6 +16,8 @@ interface HostContextValue {
   api: <T = unknown>(method: string, route: string, body?: unknown) => Promise<T>;
   subscribeEvents: (listener: (event: HostEvent) => void) => () => void;
   subscribeVideo: (deviceId: string, listener: VideoListener) => () => void;
+  /** PAUD frames (phone playback audio) for one phone: tag+index+8-byte pts+PCM16 LE. */
+  subscribeAudio: (deviceId: string, listener: VideoListener) => () => void;
 }
 
 const HostContext = createContext<HostContextValue | null>(null);
@@ -45,6 +47,7 @@ export function HostProvider({ children }: { children: ReactNode }) {
   const connected = connection !== null && socketOpen;
   const eventListeners = useRef(new Set<(event: HostEvent) => void>());
   const videoListeners = useRef(new Map<string, Set<VideoListener>>());
+  const audioListeners = useRef(new Map<string, Set<VideoListener>>());
   // Phones send SPS/PPS once per encoder start; keep the latest so viewers opened later can decode.
   const lastConfig = useRef(new Map<string, Uint8Array>());
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,8 +115,14 @@ export function HostProvider({ children }: { children: ReactNode }) {
         if (message.data instanceof ArrayBuffer) {
           const split = splitRelayFrame(message.data);
           if (!split) return;
-          if (split.frame.length > 5 && split.frame[5] & 0x01) lastConfig.current.set(split.deviceId, split.frame.slice());
-          videoListeners.current.get(split.deviceId)?.forEach((listener) => listener(split.frame));
+          const f = split.frame;
+          // "PAUD" = phone audio; everything else from a phone is "PSCR" video.
+          if (f[0] === 0x50 && f[1] === 0x41 && f[2] === 0x55 && f[3] === 0x44) {
+            audioListeners.current.get(split.deviceId)?.forEach((listener) => listener(f));
+            return;
+          }
+          if (f.length > 5 && f[5] & 0x01) lastConfig.current.set(split.deviceId, f.slice());
+          videoListeners.current.get(split.deviceId)?.forEach((listener) => listener(f));
           return;
         }
         const event = JSON.parse(message.data as string) as HostEvent;
@@ -152,9 +161,18 @@ export function HostProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const subscribeAudio = useCallback((deviceId: string, listener: VideoListener) => {
+    const map = audioListeners.current;
+    if (!map.has(deviceId)) map.set(deviceId, new Set());
+    map.get(deviceId)!.add(listener);
+    return () => {
+      map.get(deviceId)?.delete(listener);
+    };
+  }, []);
+
   const value = useMemo(
-    () => ({ connection, state, connected, refresh, api, subscribeEvents, subscribeVideo }),
-    [connection, state, connected, refresh, api, subscribeEvents, subscribeVideo],
+    () => ({ connection, state, connected, refresh, api, subscribeEvents, subscribeVideo, subscribeAudio }),
+    [connection, state, connected, refresh, api, subscribeEvents, subscribeVideo, subscribeAudio],
   );
   return <HostContext.Provider value={value}>{children}</HostContext.Provider>;
 }

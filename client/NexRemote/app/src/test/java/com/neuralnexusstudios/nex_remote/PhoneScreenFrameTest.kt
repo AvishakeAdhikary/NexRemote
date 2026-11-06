@@ -18,3 +18,17 @@ class PhoneScreenFrameTest {
         assertThat(frame).isEqualTo(expected)
     }
 }
+
+class PhoneAudioFrameTest {
+    @org.junit.Test
+    fun audioFrameLayoutMatchesWireContract() {
+        val pcm = byteArrayOf(1, 0, 2, 0)
+        val frame = com.neuralnexusstudios.nex_remote.core.feature.PhoneScreenRepository.buildAudioFrame(0x0102030405L, pcm)
+        // "PAUD" | index 0 | pts i64 big-endian | PCM16 LE
+        com.google.common.truth.Truth.assertThat(frame.copyOfRange(0, 4).decodeToString()).isEqualTo("PAUD")
+        com.google.common.truth.Truth.assertThat(frame[4]).isEqualTo(0.toByte())
+        com.google.common.truth.Truth.assertThat(frame.copyOfRange(5, 13).map { it.toInt() })
+            .containsExactly(0, 0, 0, 1, 2, 3, 4, 5).inOrder()
+        com.google.common.truth.Truth.assertThat(frame.copyOfRange(13, frame.size).toList()).isEqualTo(pcm.toList())
+    }
+}

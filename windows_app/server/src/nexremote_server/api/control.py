@@ -246,6 +246,11 @@ def create_control_app(
         error = await ctx.phone_screen.request_keyframe(device_id)
         return {"ok": error is None, "error": error}
 
+    @app.post("/phone/{device_id}/audio", dependencies=auth)
+    async def phone_audio(device_id: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        error = await ctx.phone_screen.request_audio(device_id, bool(body.get("enabled")))
+        return {"ok": error is None, "error": error}
+
     @app.post("/phone/{device_id}/stop", dependencies=auth)
     async def phone_stop(device_id: str) -> dict[str, Any]:
         error = await ctx.phone_screen.stop_share(device_id)

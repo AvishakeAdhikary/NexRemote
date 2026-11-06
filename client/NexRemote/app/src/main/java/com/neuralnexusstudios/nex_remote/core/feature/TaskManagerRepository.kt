@@ -35,6 +35,7 @@ class TaskManagerRepository(private val connectionRepository: NexRemoteConnectio
     private val _ascending = MutableStateFlow(false)
     private val _systemInfo = MutableStateFlow(SystemInfo())
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    private val _history = MutableStateFlow<List<SystemInfo>>(emptyList())
 
     val processMap: StateFlow<Map<Int, ProcessInfo>> = _processMap
     val searchQuery: StateFlow<String> = _searchQuery
@@ -42,6 +43,9 @@ class TaskManagerRepository(private val connectionRepository: NexRemoteConnectio
     val ascending: StateFlow<Boolean> = _ascending
     val systemInfo: StateFlow<SystemInfo> = _systemInfo
     val messages: SharedFlow<String> = _messages
+
+    /** Last [HISTORY_SIZE] samples, oldest first; kept here so the chart survives leaving the screen. */
+    val history: StateFlow<List<SystemInfo>> = _history
     @OptIn(FlowPreview::class)
     val visibleProcessIds: StateFlow<List<Int>> = combine(
         _processMap,
@@ -72,29 +76,33 @@ class TaskManagerRepository(private val connectionRepository: NexRemoteConnectio
                 if (payload.string("type") == "task_manager") {
                     when (payload.string("action")) {
                         "snapshot" -> {
-                            payload["system"]?.jsonObject?.let { system ->
-                                _systemInfo.value = SystemInfo(
-                                    cpuUsage = system.double("cpu_usage") ?: 0.0,
-                                    memoryUsage = system.double("memory_usage") ?: 0.0,
-                                    diskUsage = system.double("disk_usage") ?: 0.0,
-                                )
-                            }
+                            payload["system"]?.jsonObject?.let { system -> publishSystem(parseSystem(system)) }
                             applyProcessSnapshot(payload["processes"]?.jsonArray)
                         }
                         "list_processes" -> applyProcessSnapshot(payload["processes"]?.jsonArray)
-                        "system_info" -> {
-                            _systemInfo.value = SystemInfo(
-                                cpuUsage = payload.double("cpu_usage") ?: 0.0,
-                                memoryUsage = payload.double("memory_usage") ?: 0.0,
-                                diskUsage = payload.double("disk_usage") ?: 0.0,
-                            )
-                        }
+                        "system_info" -> publishSystem(parseSystem(payload))
                         "error" -> _messages.tryEmit(payload.string("message") ?: "Task Manager error")
                         "process_ended" -> _messages.tryEmit("Process terminated successfully")
                     }
                 }
             }
         }
+    }
+
+    private fun parseSystem(system: kotlinx.serialization.json.JsonObject) = SystemInfo(
+        cpuUsage = system.double("cpu_usage") ?: 0.0,
+        memoryUsage = system.double("memory_usage") ?: 0.0,
+        diskUsage = system.double("disk_usage") ?: 0.0,
+        diskActive = system.double("disk_active"),
+        netSentBps = system.double("net_sent_bps"),
+        netRecvBps = system.double("net_recv_bps"),
+        processCount = system.int("process_count"),
+        memoryTotal = system["memory_total"]?.jsonPrimitive?.longOrNull,
+    )
+
+    private fun publishSystem(info: SystemInfo) {
+        _systemInfo.value = info
+        _history.value = (_history.value + info).takeLast(HISTORY_SIZE)
     }
 
     fun updateSearchQuery(query: String) {
@@ -157,5 +165,9 @@ class TaskManagerRepository(private val connectionRepository: NexRemoteConnectio
         }
 
         return if (ascending) comparator else comparator.reversed()
+    }
+
+    companion object {
+        const val HISTORY_SIZE = 60
     }
 }

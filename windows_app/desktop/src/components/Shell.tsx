@@ -14,7 +14,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { useHost } from "@/lib/host";
-import { applyTheme, useSettings } from "@/lib/settings";
+import { applyPalette, applyTheme, useSettings } from "@/lib/settings";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { ConsentGate, LegalGate } from "./Gates";
 import { cx, StatusDot } from "./ui";
@@ -36,8 +36,10 @@ export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (settings) applyTheme(settings.theme_preference);
-  }, [settings?.theme_preference]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!settings) return;
+    applyPalette(settings.color_palette);
+    applyTheme(settings.theme_preference);
+  }, [settings?.theme_preference, settings?.color_palette]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => window.nexremote?.onNavigate((route) => router.push(route)), [router]);
 

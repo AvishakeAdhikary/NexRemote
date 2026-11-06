@@ -43,6 +43,9 @@ def test_keyboard_and_mouse_messages(ctx, backend) -> None:
     assert ("mouse", 0x0001, 5, -3, 0) in backend.calls
     assert backend.calls.count(("mouse", 0x0008, 0, 0, 0)) == 2  # right down x2
     assert ("mouse", 0x0800, 0, 0, -240) in backend.calls
+    # 1.2 precise (smooth) scrolling: raw wheel units, not notches.
+    c.handle_mouse({"action": "scroll", "dx": 0, "dy": 30, "precise": True})
+    assert ("mouse", 0x0800, 0, 0, 30) in backend.calls
 
 
 async def test_macro_and_hybrid_gamepad_buttons(ctx, backend, listeners) -> None:
@@ -181,6 +184,25 @@ async def test_phone_screen_relay_and_control(ctx, listeners) -> None:
         forwarded = await recv_until(ws, lambda m: m.get("type") == "phone_screen")
         assert forwarded["input_action"] == "tap" and forwarded["normalized_x"] == 0.25
 
+        # Audio (1.2): refused until the phone says it can capture, then relayed once active.
+        assert await ctx.phone_screen.request_audio("phone-x", True) == "audio_not_available_on_phone"
+        await send({"type": "phone_screen", "action": "config_changed", "audio_available": True})
+        await asyncio.sleep(0.2)
+        assert await ctx.phone_screen.request_audio("phone-x", True) is None
+        request = await recv_until(ws, lambda m: m.get("action") == "audio_request")
+        assert request == {"type": "phone_screen", "action": "audio_request", "enabled": True}
+        await send({"type": "phone_screen", "action": "audio_changed", "audio_active": True,
+                    "sample_rate": 48000, "channels": 2})  # fmt: skip
+        await asyncio.sleep(0.2)
+        assert ctx.phone_screen.active_shares()[0]["audio_active"] is True
+        audio = b"PAUD\x00" + (0).to_bytes(8, "big") + b"\x01\x00\x02\x00"
+        await ws.send(audio)
+        while True:
+            kind, payload = await asyncio.wait_for(events.get(), 5)
+            if kind == "binary" and payload[1 + len("phone-x") :].startswith(b"PAUD"):
+                assert payload == relay_prefix("phone-x") + audio
+                break
+
         await send({"type": "phone_screen", "action": "stop"})
         await asyncio.sleep(0.2)
         assert ctx.phone_screen.active_shares() == []
@@ -251,3 +273,20 @@ async def test_discovery_reply(ctx) -> None:
 def test_parse_adb_devices() -> None:
     out = "List of devices attached\nR58M123\tdevice\nemulator-5554\tunauthorized\n\n"
     assert parse_devices(out) == [("R58M123", "device"), ("emulator-5554", "unauthorized")]
+
+
+# task manager -----------------------------------------------------------------------
+def test_task_manager_snapshot_is_fast_and_excludes_idle() -> None:
+    import time
+
+    from nexremote_server.features.tasks import TaskManager
+
+    manager = TaskManager()
+    started = time.perf_counter()
+    snap = manager._capture_snapshot()
+    assert time.perf_counter() - started < 0.5
+    pids = {p["pid"] for p in snap["processes"]}
+    assert 0 not in pids and snap["processes"]
+    system = snap["system"]
+    assert {"cpu_usage", "memory_usage", "disk_usage", "disk_active", "net_recv_bps", "process_count"} <= set(system)
+    assert all(0.0 <= p["cpu"] <= 100.0 for p in snap["processes"])

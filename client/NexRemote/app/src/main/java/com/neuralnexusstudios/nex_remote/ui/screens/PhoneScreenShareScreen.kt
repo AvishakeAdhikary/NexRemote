@@ -52,6 +52,7 @@ import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.core.feature.PhoneScreenRepository.Status
 import com.neuralnexusstudios.nex_remote.core.model.ConnectionStatus
 import com.neuralnexusstudios.nex_remote.service.NexRemoteControlService
+import com.neuralnexusstudios.nex_remote.service.PhoneAudioCapture
 import com.neuralnexusstudios.nex_remote.ui.components.AppTopBar
 
 @Composable
@@ -95,6 +96,10 @@ fun PhoneScreenShareScreen(appContainer: AppContainer, onBack: () -> Unit) {
         } else {
             requestCapture()
         }
+    }
+    val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        repository.setAllowPcAudio(granted)
+        if (!granted) error = "Sound sharing needs the audio permission (only sound apps play is shared, never the microphone)."
     }
     val openAccessibilitySettings = {
         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -146,6 +151,36 @@ fun PhoneScreenShareScreen(appContainer: AppContainer, onBack: () -> Unit) {
                             }
                             (error ?: state.message)?.let {
                                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+
+                    // 1.2: phone audio. Off by default; the PC asks for it per phone.
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            com.neuralnexusstudios.nex_remote.ui.design.NxSwitchRow(
+                                title = "Let the PC hear this phone",
+                                subtitle = if (PhoneAudioCapture.supported()) {
+                                    "While sharing, the PC can play the sound apps on this phone are playing. The microphone is never used."
+                                } else {
+                                    "Needs Android 10 or newer."
+                                },
+                                checked = settings.allowPcAudio && PhoneAudioCapture.canCapture(context),
+                                enabled = PhoneAudioCapture.supported(),
+                                onCheckedChange = { enabled ->
+                                    when {
+                                        !enabled -> repository.setAllowPcAudio(false)
+                                        PhoneAudioCapture.canCapture(context) -> repository.setAllowPcAudio(true)
+                                        else -> audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                            )
+                            if (session.capabilities?.phoneAudio != true) {
+                                Text(
+                                    "Update NexRemote on the PC to 1.2 or newer to hear this phone there.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }

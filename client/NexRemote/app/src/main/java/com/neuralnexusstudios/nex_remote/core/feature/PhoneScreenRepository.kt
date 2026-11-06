@@ -8,6 +8,7 @@ import com.neuralnexusstudios.nex_remote.core.network.NexRemoteConnectionReposit
 import com.neuralnexusstudios.nex_remote.core.network.string
 import com.neuralnexusstudios.nex_remote.core.storage.AppPreferences
 import com.neuralnexusstudios.nex_remote.service.NexRemoteControlService
+import com.neuralnexusstudios.nex_remote.service.PhoneAudioCapture
 import com.neuralnexusstudios.nex_remote.service.ScreenCastService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,11 @@ import java.nio.ByteBuffer
  * messages, and PSCR binary frames = "PSCR" | index | flags | pts µs (i64 BE) | H.264 Annex B.
  * The host sends `input`, `request_keyframe` and `stop_request`. Input is acted on only while
  * sharing, with "Allow PC control" on and the accessibility service enabled by the user.
+ *
+ * 1.2: the host may send `audio_request {enabled}`. Audio starts only when the user turned on "Let the
+ * PC hear this phone" (and granted the permission Android requires); the phone replies with
+ * `audio_changed {audio_active, sample_rate, channels}` and streams PAUD frames =
+ * "PAUD" | index | pts µs (i64 BE) | PCM16 LE interleaved.
  */
 class PhoneScreenRepository(
     private val context: Context,
@@ -63,6 +69,7 @@ class PhoneScreenRepository(
                     "input" -> if (controlActive) NexRemoteControlService.instance?.perform(message)
                     "request_keyframe" -> ScreenCastService.requestKeyframe()
                     "stop_request" -> stop()
+                    "audio_request" -> onAudioRequest(message["enabled"]?.toString() == "true")
                 }
             }
         }
@@ -71,6 +78,18 @@ class PhoneScreenRepository(
                 if (status != ConnectionStatus.CONNECTED && _state.value.status != Status.Idle) {
                     stopService("The connection to the PC was lost, so screen sharing stopped.")
                 }
+            }
+        }
+        // Tell the host whenever audio becomes (un)available, and stop audio if the user turns it off.
+        scope.launch {
+            preferences.settings.collect { settings ->
+                val available = audioAvailable()
+                if (_state.value.status == Status.Sharing && available != lastAudioAvailable) {
+                    lastAudioAvailable = available
+                    if (!available) setAudioActive(false)
+                    sendAudioChanged()
+                }
+                if (!settings.allowPcAudio && audioActive) setAudioActive(false)
             }
         }
         // Tell the host whenever the effective control permission changes.
@@ -115,6 +134,44 @@ class PhoneScreenRepository(
 
     fun setAllowPcControl(enabled: Boolean) = preferences.updateAllowPcControl(enabled)
 
+    fun setAllowPcAudio(enabled: Boolean) = preferences.updateAllowPcAudio(enabled)
+
+    // ---- audio (1.2) ---------------------------------------------------------------------------
+    @Volatile private var audioActive = false
+    private var lastAudioAvailable = false
+
+    /** The user allowed it, Android 10+, and the permission Android requires is granted. */
+    fun audioAvailable(): Boolean =
+        preferences.settings.value.allowPcAudio && PhoneAudioCapture.canCapture(context)
+
+    private fun onAudioRequest(enabled: Boolean) {
+        if (_state.value.status != Status.Sharing) return
+        setAudioActive(enabled && audioAvailable())
+        sendAudioChanged()
+    }
+
+    private fun setAudioActive(enabled: Boolean) {
+        audioActive = ScreenCastService.setAudio(enabled)
+    }
+
+    private fun sendAudioChanged() {
+        connectionRepository.sendMessage(
+            mapOf(
+                "type" to "phone_screen",
+                "action" to "audio_changed",
+                "audio_active" to audioActive,
+                "audio_available" to audioAvailable(),
+                "sample_rate" to PhoneAudioCapture.SAMPLE_RATE,
+                "channels" to PhoneAudioCapture.CHANNELS,
+            ),
+        )
+    }
+
+    internal fun onAudioChunk(ptsUs: Long, pcm: ByteArray) {
+        if (!audioActive) return
+        connectionRepository.sendBinary(buildAudioFrame(ptsUs, pcm), droppable = true)
+    }
+
     // Called by ScreenCastService -------------------------------------------------------------
 
     internal fun onEncoderStarted(width: Int, height: Int, fps: Int, rotation: Int) {
@@ -131,8 +188,13 @@ class PhoneScreenRepository(
                 "fps" to fps,
                 "rotation" to rotation,
                 "control_available" to (preferences.settings.value.allowPcControl && NexRemoteControlService.isRunning),
+                "audio_available" to audioAvailable(),
             ),
         )
+        if (action == "start") {
+            audioActive = false
+            lastAudioAvailable = audioAvailable()
+        }
         _state.value = UiState(status = Status.Sharing, width = width, height = height)
     }
 
@@ -143,6 +205,7 @@ class PhoneScreenRepository(
         )
 
     internal fun onCaptureStopped(message: String?) {
+        audioActive = false
         if (_state.value.status != Status.Idle) {
             connectionRepository.sendMessage(mapOf("type" to "phone_screen", "action" to "stop"))
         }
@@ -154,6 +217,16 @@ class PhoneScreenRepository(
         const val FLAG_CONFIG = 0x01
         const val FLAG_KEYFRAME = 0x02
         private val TAG = byteArrayOf('P'.code.toByte(), 'S'.code.toByte(), 'C'.code.toByte(), 'R'.code.toByte())
+        private val AUDIO_TAG = byteArrayOf('P'.code.toByte(), 'A'.code.toByte(), 'U'.code.toByte(), 'D'.code.toByte())
+
+        /** "PAUD" | index 0 | pts (i64 BE) | PCM16 LE interleaved */
+        fun buildAudioFrame(ptsUs: Long, pcm: ByteArray, index: Int = 0): ByteArray =
+            ByteBuffer.allocate(4 + 1 + 8 + pcm.size)
+                .put(AUDIO_TAG)
+                .put(index.toByte())
+                .putLong(ptsUs)
+                .put(pcm)
+                .array()
 
         /** "PSCR" | index 0 | flags | pts (i64 BE) | data */
         fun buildFrame(flags: Int, ptsUs: Long, data: ByteArray, index: Int = 0): ByteArray =

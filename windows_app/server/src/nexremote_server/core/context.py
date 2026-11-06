@@ -89,6 +89,9 @@ class AppContext:
             "phone_screen": True,
             "phone_control": settings.phone_control_enabled,
             "protocol_versions": [1, 2],
+            # v1.2 additions
+            "precise_scroll": True,  # mouse scroll accepts precise=true (raw wheel units, 120 = 1 notch)
+            "phone_audio": True,  # phone_screen audio_request / PAUD relay
         }
 
     def feature_status(self) -> dict[str, dict[str, Any]]:

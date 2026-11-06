@@ -13,6 +13,19 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
+import com.neuralnexusstudios.nex_remote.ui.design.NxButton
+import com.neuralnexusstudios.nex_remote.ui.design.NxButtonKind
+import com.neuralnexusstudios.nex_remote.ui.design.NxCard
+import com.neuralnexusstudios.nex_remote.ui.design.NxChip
+import com.neuralnexusstudios.nex_remote.ui.design.NxTone
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -107,7 +120,7 @@ fun GamepadScreen(
     val settings by appContainer.preferences.settings.collectAsState()
     val sessionState by appContainer.connectionRepository.serverSessionState.collectAsState()
     val context = LocalContext.current
-    val performHaptic = rememberAppHaptics(settings.appHapticsEnabled && activeLayout.hapticFeedback)
+    val performHaptic = rememberAppHaptics(settings.appHapticsEnabled && activeLayout.hapticFeedback, game = true)
     var showLayoutPicker by remember { mutableStateOf(false) }
     var editingLayout by remember { mutableStateOf<GamepadLayoutConfig?>(null) }
     var renameLayout by remember { mutableStateOf<GamepadLayoutConfig?>(null) }
@@ -157,16 +170,29 @@ fun GamepadScreen(
     }
 
     val actions: @Composable RowScope.() -> Unit = {
+        // Toggles show their state: accent = on, muted = off.
         IconButton(onClick = {
             val updated = activeLayout.copy(hapticFeedback = !activeLayout.hapticFeedback)
             repository.saveLayout(updated)
             repository.setActive(updated)
-        }) { Icon(Icons.Outlined.Vibration, contentDescription = "Toggle layout haptics") }
+        }) {
+            Icon(
+                Icons.Outlined.Vibration,
+                contentDescription = if (activeLayout.hapticFeedback) "Haptics on (tap to turn off)" else "Haptics off (tap to turn on)",
+                tint = if (activeLayout.hapticFeedback && settings.appHapticsEnabled) Nx.primary else Nx.muted,
+            )
+        }
         IconButton(onClick = {
             val updated = activeLayout.copy(gyroEnabled = !activeLayout.gyroEnabled)
             repository.saveLayout(updated)
             repository.setActive(updated)
-        }) { Icon(Icons.Outlined.ScreenRotationAlt, contentDescription = "Toggle gyro") }
+        }) {
+            Icon(
+                Icons.Outlined.ScreenRotationAlt,
+                contentDescription = if (activeLayout.gyroEnabled) "Gyro on" else "Gyro off",
+                tint = if (activeLayout.gyroEnabled) Nx.primary else Nx.muted,
+            )
+        }
         IconButton(onClick = { editingLayout = activeLayout }) {
             Icon(Icons.Outlined.Edit, contentDescription = "Edit layout")
         }
@@ -237,64 +263,41 @@ fun GamepadScreen(
     }
 
     if (showLayoutPicker) {
-        AlertDialog(
-            onDismissRequest = { showLayoutPicker = false },
-            title = { Text("Layouts") },
-            text = {
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    items(layouts, key = { it.id }) { layout ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (layout.id == activeLayout.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                            ),
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(layout.name, style = MaterialTheme.typography.titleMedium)
-                                Text("${layout.mode.uppercase()} • ${if (layout.layoutKind == "touch_mapper") "Touch Mapper" else "Classic Controller"}", style = MaterialTheme.typography.bodySmall)
-                                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    TextButton(onClick = {
-                                        repository.setActive(layout)
-                                        showLayoutPicker = false
-                                    }) { Text("Use") }
-                                    TextButton(onClick = {
-                                        editingLayout = layout
-                                        showLayoutPicker = false
-                                    }) { Text("Edit") }
-                                    TextButton(onClick = {
-                                        val duplicate = layout.copy(id = "${layout.id}_copy_${System.currentTimeMillis()}", name = "${layout.name} Copy").normalizeForStorage()
-                                        repository.saveLayout(duplicate)
-                                        repository.setActive(duplicate)
-                                        showLayoutPicker = false
-                                    }) { Text("Duplicate") }
-                                    TextButton(onClick = {
-                                        renameLayout = layout
-                                        showLayoutPicker = false
-                                    }) { Text("Rename") }
-                                    if (!BuiltInGamepadLayoutIds.contains(layout.id)) {
-                                        TextButton(onClick = { repository.deleteLayout(layout.id) }) { Text("Delete") }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    item {
-                        TextButton(onClick = {
-                            editingLayout = GamepadLayoutConfig(
-                                id = "custom_${System.currentTimeMillis()}",
-                                name = "My Layout",
-                                layoutKind = "touch_mapper",
-                                mode = activeLayout.mode,
-                                gyroEnabled = activeLayout.gyroEnabled,
-                                accelEnabled = activeLayout.accelEnabled,
-                                hapticFeedback = true,
-                            ).normalizeForStorage()
-                            showLayoutPicker = false
-                        }) { Text("New Layout") }
-                    }
-                }
+        LayoutPickerPanel(
+            layouts = layouts,
+            activeLayoutId = activeLayout.id,
+            onDismiss = { showLayoutPicker = false },
+            onUse = { layout ->
+                repository.setActive(layout)
+                showLayoutPicker = false
             },
-            confirmButton = { TextButton(onClick = { showLayoutPicker = false }) { Text("Close") } },
+            onEdit = { layout ->
+                editingLayout = layout
+                showLayoutPicker = false
+            },
+            onDuplicate = { layout ->
+                val duplicate = layout.copy(id = "${layout.id}_copy_${System.currentTimeMillis()}", name = "${layout.name} Copy").normalizeForStorage()
+                repository.saveLayout(duplicate)
+                repository.setActive(duplicate)
+                showLayoutPicker = false
+            },
+            onRename = { layout ->
+                renameLayout = layout
+                showLayoutPicker = false
+            },
+            onDelete = { layout -> repository.deleteLayout(layout.id) },
+            onNew = {
+                editingLayout = GamepadLayoutConfig(
+                    id = "custom_${System.currentTimeMillis()}",
+                    name = "My Layout",
+                    layoutKind = "touch_mapper",
+                    mode = activeLayout.mode,
+                    gyroEnabled = activeLayout.gyroEnabled,
+                    accelEnabled = activeLayout.accelEnabled,
+                    hapticFeedback = true,
+                ).normalizeForStorage()
+                showLayoutPicker = false
+            },
         )
     }
 
@@ -310,6 +313,96 @@ fun GamepadScreen(
                 renameLayout = null
             },
         )
+    }
+}
+
+/**
+ * Layout picker as a bottom panel (bounded height, own scroll). It used to be a LazyColumn inside an
+ * AlertDialog, which Composables UI measures with unbounded height: that crashed the app.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LayoutPickerPanel(
+    layouts: List<GamepadLayoutConfig>,
+    activeLayoutId: String,
+    onDismiss: () -> Unit,
+    onUse: (GamepadLayoutConfig) -> Unit,
+    onEdit: (GamepadLayoutConfig) -> Unit,
+    onDuplicate: (GamepadLayoutConfig) -> Unit,
+    onRename: (GamepadLayoutConfig) -> Unit,
+    onDelete: (GamepadLayoutConfig) -> Unit,
+    onNew: () -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        BoxWithConstraints {
+            val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxHeight * 0.75f)
+                    .clip(shape)
+                    .background(Nx.panel)
+                    .border(1.dp, Nx.border, shape)
+                    .pointerInput(Unit) { detectTapGestures { } } // swallow taps so the scrim doesn't close
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Layouts", style = NxType.title, modifier = Modifier.weight(1f))
+                    NxIconButton(Icons.Outlined.Add, contentDescription = "New layout", onClick = onNew)
+                    NxIconButton(Icons.Outlined.Close, contentDescription = "Close", onClick = onDismiss)
+                }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 16.dp, end = 16.dp, bottom = 20.dp, top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    layouts.forEach { layout ->
+                        val active = layout.id == activeLayoutId
+                        NxCard(
+                            Modifier.fillMaxWidth(),
+                            tone = if (active) NxTone.Accent else NxTone.Raised,
+                            onClick = { onUse(layout) },
+                            contentPadding = PaddingValues(14.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(layout.name, style = NxType.titleSmall)
+                                    Text(
+                                        "${layout.mode.uppercase()} · ${if (layout.layoutKind == "touch_mapper") "Touch mapper" else "Classic controller"}" +
+                                            if (layout.hapticFeedback) " · Haptics on" else "",
+                                        style = NxType.bodySmall,
+                                        color = Nx.muted,
+                                    )
+                                }
+                                if (active) NxStatusPill("In use", Nx.primary)
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (!active) NxChip("Use", selected = false, onClick = { onUse(layout) })
+                                NxChip("Edit", selected = false, icon = Icons.Outlined.Edit, onClick = { onEdit(layout) })
+                                NxChip("Duplicate", selected = false, onClick = { onDuplicate(layout) })
+                                NxChip("Rename", selected = false, onClick = { onRename(layout) })
+                                if (!BuiltInGamepadLayoutIds.contains(layout.id)) {
+                                    NxChip("Delete", selected = false, onClick = { onDelete(layout) })
+                                }
+                            }
+                        }
+                    }
+                    NxButton("New layout", onClick = onNew, kind = NxButtonKind.Outlined, icon = Icons.Outlined.Add, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
     }
 }
 
@@ -345,14 +438,14 @@ private fun RuntimeCanvas(
                 when (element.type) {
                     "button", "utility" -> RuntimeButton(element) { pressed ->
                         if (gamepadAvailable) {
-                            if (pressed) performHaptic(AppHapticStyle.Light)
+                            performHaptic(if (pressed) AppHapticStyle.Light else AppHapticStyle.Release)
                             repository.sendButton(element.action ?: element.bindingValue.orEmpty(), pressed)
                         }
                     }
 
                     "trigger" -> RuntimeButton(element) { pressed ->
                         if (gamepadAvailable) {
-                            if (pressed) performHaptic(AppHapticStyle.Light)
+                            performHaptic(if (pressed) AppHapticStyle.Light else AppHapticStyle.Release)
                             repository.sendTrigger(element.trigger ?: element.bindingValue ?: "LT", if (pressed) 1f else 0f)
                         }
                     }
@@ -374,14 +467,14 @@ private fun RuntimeCanvas(
 
                     "dpad" -> RuntimeDpad(element) { direction, pressed ->
                         if (gamepadAvailable) {
-                            if (pressed) performHaptic(AppHapticStyle.Light)
+                            performHaptic(if (pressed) AppHapticStyle.Light else AppHapticStyle.Release)
                             repository.sendDpad(direction, pressed)
                         }
                     }
 
                     "face_buttons" -> RuntimeFaceButtons { button, pressed ->
                         if (gamepadAvailable) {
-                            if (pressed) performHaptic(AppHapticStyle.Light)
+                            performHaptic(if (pressed) AppHapticStyle.Light else AppHapticStyle.Release)
                             repository.sendButton(button, pressed)
                         }
                     }

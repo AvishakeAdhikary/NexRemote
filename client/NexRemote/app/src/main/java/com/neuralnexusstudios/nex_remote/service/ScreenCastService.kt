@@ -45,6 +45,7 @@ class ScreenCastService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var encoder: MediaCodec? = null
     private var encoderThread: HandlerThread? = null
+    private var audio: PhoneAudioCapture? = null
     private var width = 0
     private var height = 0
     private var rotation = 0
@@ -225,6 +226,7 @@ class ScreenCastService : Service() {
         running = false
         if (current === this) current = null
         runCatching { getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener) }
+        setAudioEnabled(false)
         virtualDisplay?.release()
         virtualDisplay = null
         releaseEncoder()
@@ -241,6 +243,22 @@ class ScreenCastService : Service() {
     override fun onDestroy() {
         if (running) stopCapture(null)
         super.onDestroy()
+    }
+
+    /** Start or stop sending this phone's playback audio. Returns whether audio is now active. */
+    fun setAudioEnabled(enabled: Boolean): Boolean {
+        if (!enabled) {
+            audio?.stop()
+            audio = null
+            return false
+        }
+        if (audio != null) return true
+        val p = projection ?: return false
+        if (!running || !PhoneAudioCapture.canCapture(this) || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        val capture = PhoneAudioCapture(p) { pts, pcm -> repository.onAudioChunk(pts, pcm) }
+        if (!capture.start()) return false
+        audio = capture
+        return true
     }
 
     private fun buildNotification(): Notification {
@@ -286,6 +304,9 @@ class ScreenCastService : Service() {
 
         @Volatile
         private var current: ScreenCastService? = null
+
+        /** Start/stop phone audio for the running share. Returns whether audio is active. */
+        fun setAudio(enabled: Boolean): Boolean = current?.setAudioEnabled(enabled) ?: false
 
         /** Ask the encoder for an IDR frame (a PC viewer just opened or lost sync). */
         fun requestKeyframe() {

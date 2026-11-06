@@ -91,9 +91,13 @@ function startUrl(route = "/"): string {
 }
 
 // Caption-button colours follow the renderer's --surface/--text tokens (see globals.css).
+// Caption-button colours. The renderer reports the active palette's --surface/--text through
+// app:set-titlebar-colors; until then use the default Nexus palette.
+let overlayColors: { color: string; symbolColor: string } | null = null;
 function titleBarOverlay(): Electron.TitleBarOverlayOptions {
   const dark = nativeTheme.shouldUseDarkColors;
-  return { color: dark ? "#13161d" : "#ffffff", symbolColor: dark ? "#e8eaf0" : "#151821", height: 35 };
+  const fallback = { color: dark ? "#111111" : "#ffffff", symbolColor: dark ? "#f2f2f2" : "#121212" };
+  return { ...(overlayColors ?? fallback), height: 35 };
 }
 
 function createWindow(): BrowserWindow {
@@ -105,7 +109,7 @@ function createWindow(): BrowserWindow {
     show: false,
     title: "NexRemote",
     icon: iconPath(),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0b0d12" : "#f6f7fb",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#060606" : "#f6f5f5",
     // Frameless look: no system title bar, Windows still draws the caption buttons (and snap layouts).
     titleBarStyle: "hidden",
     titleBarOverlay: titleBarOverlay(),
@@ -315,6 +319,12 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle("host:connection", () => sidecar.current);
   ipcMain.handle("app:open-external", (_event, url: string) => openExternal(url));
   nativeTheme.on("updated", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitleBarOverlay(titleBarOverlay());
+  });
+  ipcMain.handle("app:set-titlebar-colors", (_event, color: string, symbolColor: string) => {
+    const hex = /^#[0-9a-fA-F]{3,8}$/;
+    if (!hex.test(color) || !hex.test(symbolColor)) return;
+    overlayColors = { color, symbolColor };
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitleBarOverlay(titleBarOverlay());
   });
   ipcMain.handle("app:set-theme", (_event, theme: "system" | "light" | "dark") => {

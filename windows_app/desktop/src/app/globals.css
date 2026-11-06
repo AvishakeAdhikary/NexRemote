@@ -1,48 +1,65 @@
 @import "tailwindcss";
 
-/* Theme tokens. data-theme on <html> is set from the user's setting; "system" follows the OS. */
+/*
+ * Theme tokens. The renderer sets two attributes on <html> (see lib/settings.ts):
+ *   data-mode     "light" | "dark"   resolved from the Theme setting ("system" follows Windows)
+ *   data-palette  one of PALETTES    the Color palette setting ("nexus" = NexRemote red on black)
+ * Neutrals come from the mode (+ a palette tint for some palettes); accents from the palette.
+ * Keep --surface/--text in sync with the Electron caption overlay (setTitleBarColors).
+ */
 :root {
   --titlebar-h: 36px;
-  --bg: #f5f6f9;
+  /* light neutrals */
+  --bg: #f6f5f5;
   --surface: #ffffff;
+  --surface-2: #f1efef;
+  --border: #e3e0e0;
+  --text: #121212;
+  --muted: #646464;
+  --ok: #1b7f45;
+  --ok-soft: #e1f4e8;
+  --warn: #a35f00;
+  --warn-soft: #fdf1dc;
+  --danger: #c62828;
+  --danger-soft: #fde7e7;
+  /* nexus accent (default) */
+  --accent: #c8102e;
+  --accent-fg: #ffffff;
+  --accent-soft: #fce4e7;
+  color-scheme: light;
+}
+
+:root[data-mode="dark"] {
+  --bg: #060606;
+  --surface: #111111;
+  --surface-2: #1a1a1a;
+  --border: #262626;
+  --text: #f2f2f2;
+  --muted: #9a9a9a;
+  --ok: #3ddc84;
+  --ok-soft: #10261a;
+  --warn: #ffb547;
+  --warn-soft: #2d2212;
+  --danger: #ff6b6b;
+  --danger-soft: #331617;
+  --accent: #e5202e;
+  --accent-fg: #ffffff;
+  --accent-soft: #2a0a0d;
+  color-scheme: dark;
+}
+
+/* ---- palettes ------------------------------------------------------------------------- */
+/* Ocean: the original NexRemote blue on slate. */
+:root[data-palette="ocean"] {
+  --bg: #f5f6f9;
   --surface-2: #f0f2f6;
   --border: #e2e5ec;
   --text: #151821;
   --muted: #5d6475;
   --accent: #3b5bdb;
-  --accent-fg: #ffffff;
   --accent-soft: #e8edff;
-  --ok: #1f8a4c;
-  --ok-soft: #e3f5ea;
-  --warn: #a35f00;
-  --warn-soft: #fdf1dc;
-  --danger: #c92a2a;
-  --danger-soft: #fde7e7;
-  color-scheme: light;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0b0d12;
-    --surface: #13161d;
-    --surface-2: #1a1e27;
-    --border: #262b36;
-    --text: #e8eaf0;
-    --muted: #9aa1b2;
-    --accent: #7c95ff;
-    --accent-fg: #0b0d12;
-    --accent-soft: #1d2440;
-    --ok: #4cc27c;
-    --ok-soft: #12291c;
-    --warn: #f0a540;
-    --warn-soft: #2d2212;
-    --danger: #ff6b6b;
-    --danger-soft: #331617;
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
+:root[data-palette="ocean"][data-mode="dark"] {
   --bg: #0b0d12;
   --surface: #13161d;
   --surface-2: #1a1e27;
@@ -52,13 +69,62 @@
   --accent: #7c95ff;
   --accent-fg: #0b0d12;
   --accent-soft: #1d2440;
-  --ok: #4cc27c;
-  --ok-soft: #12291c;
-  --warn: #f0a540;
-  --warn-soft: #2d2212;
-  --danger: #ff6b6b;
-  --danger-soft: #331617;
-  color-scheme: dark;
+}
+
+/* Emerald */
+:root[data-palette="emerald"] {
+  --accent: #0f8a5f;
+  --accent-soft: #dcf3ea;
+}
+:root[data-palette="emerald"][data-mode="dark"] {
+  --bg: #050807;
+  --surface: #0e1311;
+  --surface-2: #151c19;
+  --border: #22302a;
+  --accent: #2fd08f;
+  --accent-fg: #04140d;
+  --accent-soft: #0c2a1f;
+}
+
+/* Violet */
+:root[data-palette="violet"] {
+  --accent: #6d3fd8;
+  --accent-soft: #ece5fd;
+}
+:root[data-palette="violet"][data-mode="dark"] {
+  --bg: #07060b;
+  --surface: #110f18;
+  --surface-2: #191622;
+  --border: #282336;
+  --accent: #a685ff;
+  --accent-fg: #120c24;
+  --accent-soft: #221a3d;
+}
+
+/* Amber */
+:root[data-palette="amber"] {
+  --accent: #b45309;
+  --accent-soft: #fdf0dc;
+}
+:root[data-palette="amber"][data-mode="dark"] {
+  --bg: #080604;
+  --surface: #13100c;
+  --surface-2: #1b1712;
+  --border: #2c251c;
+  --accent: #ffb020;
+  --accent-fg: #1a1102;
+  --accent-soft: #2e2208;
+}
+
+/* Graphite: monochrome. */
+:root[data-palette="graphite"] {
+  --accent: #1f1f1f;
+  --accent-soft: #ececec;
+}
+:root[data-palette="graphite"][data-mode="dark"] {
+  --accent: #f2f2f2;
+  --accent-fg: #0a0a0a;
+  --accent-soft: #262626;
 }
 
 @theme inline {

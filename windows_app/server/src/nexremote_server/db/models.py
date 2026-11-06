@@ -55,7 +55,9 @@ class AppSettings(BaseModel):
     auto_start: bool = False
     minimize_to_tray: bool = True
     show_notifications: bool = True
-    theme_preference: Literal["system", "light", "dark"] = "system"
+    theme_preference: Literal["system", "light", "dark"] = "dark"
+    # Desktop UI accent palette. "nexus" is NexRemote red on black (matches the Android app).
+    color_palette: Literal["nexus", "ocean", "emerald", "violet", "amber", "graphite"] = "nexus"
 
     terms_of_service_accepted: bool = False
     terms_of_service_accepted_at: datetime | None = None
@@ -100,6 +102,7 @@ USER_EDITABLE_SETTINGS = frozenset(
         "minimize_to_tray",
         "show_notifications",
         "theme_preference",
+        "color_palette",
         "phone_control_enabled",
     }
 )

@@ -199,11 +199,13 @@ class InputController:
             self.mouse_down(button)
             self.mouse_up(button)
 
-    def scroll(self, dx: int, dy: int) -> None:
+    def scroll(self, dx: int, dy: int, precise: bool = False) -> None:
+        """dx/dy are notches, or raw wheel units (120 = one notch) when precise (smooth scrolling)."""
+        unit = 1 if precise else WHEEL_DELTA
         if dy:
-            self.backend.mouse(_MOUSEEVENTF_WHEEL, data=dy * WHEEL_DELTA)
+            self.backend.mouse(_MOUSEEVENTF_WHEEL, data=max(-12000, min(12000, dy * unit)))
         if dx:
-            self.backend.mouse(_MOUSEEVENTF_HWHEEL, data=dx * WHEEL_DELTA)
+            self.backend.mouse(_MOUSEEVENTF_HWHEEL, data=max(-12000, min(12000, dx * unit)))
 
     # dispatch -----------------------------------------------------------------
     def handle_keyboard(self, msg: dict[str, Any]) -> None:
@@ -231,7 +233,7 @@ class InputController:
             case "release":
                 self.mouse_up(get_str(msg, "button"))
             case "scroll":
-                self.scroll(get_int(msg, "dx"), get_int(msg, "dy"))
+                self.scroll(get_int(msg, "dx"), get_int(msg, "dy"), bool(msg.get("precise")))
 
     def run_macro_action(self, action: str) -> None:
         lowered = action.lower()

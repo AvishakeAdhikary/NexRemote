@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("nexremote", {
   },
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("app:open-external", url),
   setTheme: (theme: "system" | "light" | "dark"): Promise<void> => ipcRenderer.invoke("app:set-theme", theme),
+  setTitleBarColors: (color: string, symbolColor: string): Promise<void> =>
+    ipcRenderer.invoke("app:set-titlebar-colors", color, symbolColor),
   quit: (): Promise<void> => ipcRenderer.invoke("app:quit"),
   appVersion: (): Promise<string> => ipcRenderer.invoke("app:version"),
 });

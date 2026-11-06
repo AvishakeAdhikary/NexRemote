@@ -45,6 +45,9 @@ data class ServerCapabilities(
     // Host 1.1+: the PC can show this phone's screen and (if allowed here) control it.
     @SerialName("phone_screen") val phoneScreen: Boolean = false,
     @SerialName("phone_control") val phoneControl: Boolean = false,
+    // Host 1.2+: smooth scrolling (raw wheel units) and phone audio while sharing.
+    @SerialName("precise_scroll") val preciseScroll: Boolean = false,
+    @SerialName("phone_audio") val phoneAudio: Boolean = false,
 )
 
 data class ServerSessionState(
@@ -64,6 +67,8 @@ data class AppSettings(
     val useSecureConnection: Boolean = true,
     val termsAccepted: Boolean = false,
     val allowPcControl: Boolean = false,
+    /** Let the PC request this phone's playback audio while sharing (1.2+). */
+    val allowPcAudio: Boolean = false,
     val controlDisclosureAccepted: Boolean = false,
     val termsAcceptedAt: String? = null,
     val cameraDisclosureAccepted: Boolean = false,
@@ -214,7 +219,15 @@ data class ProcessInfo(
 data class SystemInfo(
     val cpuUsage: Double = 0.0,
     val memoryUsage: Double = 0.0,
+    /** Space used on the system drive. */
     val diskUsage: Double = 0.0,
+    // Host 1.2+ (null on older hosts):
+    /** Disk active time, like Windows Task Manager's "Disk" column. */
+    val diskActive: Double? = null,
+    val netSentBps: Double? = null,
+    val netRecvBps: Double? = null,
+    val processCount: Int? = null,
+    val memoryTotal: Long? = null,
 )
 
 object DefaultGamepadLayouts {

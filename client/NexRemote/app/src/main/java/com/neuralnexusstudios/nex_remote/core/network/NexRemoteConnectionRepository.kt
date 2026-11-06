@@ -52,6 +52,7 @@ class NexRemoteConnectionRepository(
     private val baseClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .socketFactory(NoDelaySocketFactory())
         .build()
 
     private fun secureClientFor(trust: PinnedTrust): OkHttpClient =
@@ -405,7 +406,7 @@ class NexRemoteConnectionRepository(
         realtimeJob?.cancel()
         realtimeJob = scope.launch {
             while (true) {
-                delay(6)
+                delay(4)
                 if (_connectionState.value != ConnectionStatus.CONNECTED || pendingRealtime.isEmpty()) {
                     continue
                 }
@@ -423,16 +424,15 @@ class NexRemoteConnectionRepository(
     private fun enqueueRealtime(key: String, payload: JsonObject) {
         val type = payload.string("type").orEmpty()
         val action = payload.string("action").orEmpty()
-        val merged = when {
-            type == "mouse" && action == "move_relative" -> mergeDeltaPayload(key, payload)
-            type == "mouse" && action == "scroll" -> mergeDeltaPayload(key, payload)
-            else -> payload
+        val additive = type == "mouse" && (action == "move_relative" || action == "scroll")
+        // compute() is atomic per key: a flush that races with this either sends the old payload
+        // (and the new one starts fresh) or finds the merged one, never both.
+        pendingRealtime.compute(key) { _, existing ->
+            if (additive && existing != null) mergeDeltaPayload(existing, payload) else payload
         }
-        pendingRealtime[key] = merged
     }
 
-    private fun mergeDeltaPayload(key: String, payload: JsonObject): JsonObject {
-        val existing = pendingRealtime[key] ?: return payload
+    private fun mergeDeltaPayload(existing: JsonObject, payload: JsonObject): JsonObject {
         val dx = (existing.int("dx") ?: 0) + (payload.int("dx") ?: 0)
         val dy = (existing.int("dy") ?: 0) + (payload.int("dy") ?: 0)
         return JsonObject(payload.toMutableMap().apply {

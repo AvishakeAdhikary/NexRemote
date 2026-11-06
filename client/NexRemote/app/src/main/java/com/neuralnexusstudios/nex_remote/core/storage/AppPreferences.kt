@@ -42,6 +42,11 @@ class AppPreferences(context: Context) {
         refresh()
     }
 
+    fun updateAllowPcAudio(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ALLOW_PC_AUDIO, enabled).apply()
+        refresh()
+    }
+
     fun updateAllowPcControl(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ALLOW_PC_CONTROL, enabled).apply()
         refresh()
@@ -140,6 +145,7 @@ class AppPreferences(context: Context) {
             useSecureConnection = prefs.getBoolean(KEY_USE_SECURE_CONNECTION, true),
             termsAccepted = prefs.getBoolean(KEY_TERMS_ACCEPTED, false),
             allowPcControl = prefs.getBoolean(KEY_ALLOW_PC_CONTROL, false),
+            allowPcAudio = prefs.getBoolean(KEY_ALLOW_PC_AUDIO, false),
             controlDisclosureAccepted = prefs.getBoolean(KEY_CONTROL_DISCLOSURE, false),
             termsAcceptedAt = prefs.getString(KEY_TERMS_ACCEPTED_AT, null),
             cameraDisclosureAccepted = prefs.getBoolean(KEY_CAMERA_DISCLOSURE, false),
@@ -194,6 +200,7 @@ class AppPreferences(context: Context) {
         private const val KEY_ACTIVE_LAYOUT_ID = "gamepad_active_layout_id"
         private const val KEY_CAMERA_DISCLOSURE = "camera_disclosure_accepted"
         private const val KEY_ALLOW_PC_CONTROL = "allow_pc_control"
+        private const val KEY_ALLOW_PC_AUDIO = "allow_pc_audio"
         private const val KEY_CONTROL_DISCLOSURE = "control_disclosure_accepted"
         private const val KEY_CONTROL_DISCLOSURE_AT = "control_disclosure_accepted_at"
     }

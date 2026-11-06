@@ -62,7 +62,7 @@ windows_app/
 3. The renderer only talks to the control API: REST for state and settings, plus a WebSocket at `/events` for approvals, sessions, feature status and the phone-screen video relay. The renderer gets the base URL and token through `preload.ts` (`contextIsolation` on, `nodeIntegration` off).
 4. Electron supervises the sidecar: a health check on `GET /health`, a restart with backoff if it crashes, and a clean stop on quit.
 
-**Gating:** the protocol servers only accept connections once the user has accepted the current legal documents (version `2026-11-01`) and granted remote-networking consent. `EnableRemoteAccess` must also be true. These are the same conditions as the legacy app.
+**Gating:** the protocol servers only accept connections once the user has accepted the current legal documents (version `2026-11-06`) and granted remote-networking consent. `EnableRemoteAccess` must also be true. These are the same conditions as the legacy app.
 
 ## Data and the database
 
@@ -122,7 +122,7 @@ windows_app/
 ## Store-safety rules
 
 - **Identity:** never change `identityName` (`NeuralNexusStudios.NexRemote`), `publisher` (`CN=8559855F-6955-4418-A6D8-835C3238CF34`) or `publisherDisplayName` (`Neural Nexus Studios`) in `electron-builder.yml` or the AppxManifest template.
-- **Versions:** keep the form `Major.Minor.Build.0` and only ever increase them. The current release is `1.1.0.0`.
+- **Versions:** keep the form `Major.Minor.Build.0` and only ever increase them. The current release is `1.2.0.0` (1.1.0.0 was submitted first).
 - **The AppxManifest template must keep:**
   - Capabilities: `runFullTrust`, `internetClient`, `internetClientServer`, `privateNetworkClientServer`, `webcam`.
   - Firewall rules for TCP 8765/8766 and UDP 37020.
@@ -147,13 +147,21 @@ Every item must work before the legacy `NexRemote/` folder is deleted. Record re
 - **Screen share:** list_displays, start with display_index(es), fps, quality, resolution, audio; set_* actions; input with normalized and pixel coordinates; `SCRN` frames; `AUDF` audio with `audio_format`.
 - **Camera:** consent gate (`permission_required`), list, start, start_multi, stop, stop_all, set_camera, error codes, `CAMF` frames.
 - **File explorer:** every action listed in the root contract, with paths kept under drive roots.
-- **Task manager:** snapshot (1 s cache), list_processes, system_info, end_process (tree kill; `elevation_required` on access denied).
+- **Task manager:** snapshot, list_processes, system_info, end_process (tree kill; `elevation_required` on access denied). On Windows, processes come from one `NtQuerySystemInformation` call (`features/winproc.py`, about 10 ms instead of about 1 s with psutil). Memory is the private working set, PID 0 (Idle) is excluded, and disk active time comes from PDH `PhysicalDisk(_Total)\% Idle Time`, because psutil's disk times are frozen on many PCs. Snapshots are always fresh (0.5 s cache).
 - **Media control:** every action, plus the `media_info` push every 1.5 s.
 - **Clipboard:** get, set, clear.
 - **USB:** the adb reverse poller (`<data>\tools\platform-tools\`, then next to the app, then `where adb`).
 - **Status:** capabilities and feature_status reflect real availability, including the `action_required` codes.
-- **Phone screen (new):** `PSCR` decode in the UI, input relay back to the phone, Back/Home/Recents.
+- **Phone screen (new):**
+  - `PSCR` decode in the UI, input relay back to the phone, Back/Home/Recents.
+  - 1.2: a grid of every sharing phone (or one phone), full screen through the Fullscreen API with floating controls, and per-phone audio (`POST /phone/{id}/audio`, `PAUD` relayed with the video prefix and played by `lib/pcm-player.ts`).
 - **Upgrade:** after installing over Store 1.0.0.0, settings, the certificate and trusted devices carry over and the phone reconnects without pairing again.
+
+## Theming
+
+- **Palettes:** the `color_palette` setting (`nexus` is the default, red on black; also `ocean`, `emerald`, `violet`, `amber`, `graphite`) and `theme_preference` (default `dark`) are server settings.
+- **Applying them:** `lib/settings.ts` sets `data-palette` and a resolved `data-mode` on `<html>`, and `globals.css` defines the tokens per mode and palette. Use the tokens (`bg-accent`, `text-muted`, ...), never hex colours in components.
+- **Caption buttons:** the renderer reports `--surface`/`--text` to Electron (`app:set-titlebar-colors`) so the caption buttons match the palette.
 
 ## Known platform quirks
 

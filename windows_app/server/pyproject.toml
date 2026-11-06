@@ -1,6 +1,6 @@
 [project]
 name = "nexremote-server"
-version = "1.1.0"
+version = "1.2.0"
 description = "NexRemote Windows host: protocol server, discovery, and local control API."
 requires-python = ">=3.13,<3.14"
 license = "MIT"

@@ -64,6 +64,17 @@ The UI uses **Composables UI** (`com.composables:ui`, built on Compose Unstyled)
 - Migration bridge: `ui/design/compat/Bridge.kt` gives the remaining screens Material-shaped names (`Card`, `Button`, `Scaffold`, `MaterialTheme.typography`, ...) rendered with Composables UI. Port screens to `Nx*` over time and delete bridge entries when their last caller goes.
 - Composables UI's `Toolbar` doesn't constrain the title against its trailing actions, so use `NxTopBar`.
 - Gamepad: play and editor share `padBounds()`, `GamepadCanvasBox` and `GamepadLandscapeFrame` (in `GamepadScreen.kt`), so the editor canvas always matches the play canvas. Round controls (joystick, D-pad, face buttons) are kept square, and their inner buttons are sized as a fraction of the cluster. Landscape is immersive. The editor renders in place of the play screen, not in a Dialog.
+- **Haptics** (`ui/components/Haptics.kt`) follow https://developer.android.com/develop/ui/views/haptics/haptic-feedback:
+  - Ordinary UI uses `View.performHapticFeedback` with press/release constants, which honours the system Touch-feedback setting.
+  - The gamepad (`rememberAppHaptics(..., game = true)`) plays predefined `VibrationEffect`s with game/media attributes, so the per-layout "Vibrate on press" switch works even when system touch feedback is off.
+  - Don't use `CLOCK_TICK` for presses; it's too faint on many motors.
+- **Dialogs:** Composables UI's `AlertDialog` measures its body with unbounded height. Never put a `LazyColumn` (or another `verticalScroll`) inside it, because it crashes. Use a bottom panel with a bounded height (see `LayoutPickerPanel`).
+- **Touchpad:**
+  - Custom gestures with no touch slop: one-finger move with acceleration (`pointerGain`), tap/long-press clicks, two-finger tap = right click, two-finger drag = scroll.
+  - Scroll uses `precise: true` only when the host advertises `precise_scroll`.
+  - Sockets use `NoDelaySocketFactory` (TCP_NODELAY). Without it, Nagle plus Windows delayed ACKs add up to 200 ms per touchpad move.
+- **Charts:** Vico (`com.patrykandpatrick.vico:compose`). The task-manager history lives in `TaskManagerRepository.history`, with a fixed 60-sample window so lines enter from the right.
+- **Phone audio** (`service/PhoneAudioCapture.kt`): AudioPlaybackCapture on the share's MediaProjection, Android 10+, `RECORD_AUDIO` granted from the "Let the PC hear this phone" switch. Never the microphone.
 - Toolchain: Composables UI requires Kotlin 2.4 (the root `build.gradle.kts` pins the Kotlin Gradle plugin through the catalog) and `compileSdk` 37 (`targetSdk` stays 36).
 
 Use the existing Gradle wrapper from `client/NexRemote/`.

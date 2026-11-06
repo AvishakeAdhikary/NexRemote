@@ -1,3 +1,5 @@
+export type Palette = "nexus" | "ocean" | "emerald" | "violet" | "amber" | "graphite";
+
 export interface Connection {
   baseUrl: string;
   token: string;
@@ -40,6 +42,11 @@ export interface PhoneShare {
   fps: number;
   rotation: number;
   control_available: boolean;
+  /** 1.2+: the phone can stream its playback audio (Android 10+). */
+  audio_available?: boolean;
+  audio_active?: boolean;
+  sample_rate?: number;
+  channels?: number;
 }
 
 export interface AdbStatus {
@@ -91,6 +98,7 @@ export interface HostSettings {
   minimize_to_tray: boolean;
   show_notifications: boolean;
   theme_preference: "system" | "light" | "dark";
+  color_palette: Palette;
   remote_control_consent_granted: boolean;
   background_consent_granted: boolean;
   camera_access_consent_granted: boolean;
@@ -118,6 +126,7 @@ export interface NexRemoteBridge {
   onNavigate(callback: (route: string) => void): () => void;
   openExternal(url: string): Promise<void>;
   setTheme(theme: "system" | "light" | "dark"): Promise<void>;
+  setTitleBarColors?(color: string, symbolColor: string): Promise<void>;
   quit(): Promise<void>;
   appVersion(): Promise<string>;
 }

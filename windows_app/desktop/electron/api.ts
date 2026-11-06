@@ -16,6 +16,7 @@ export interface HostSettings {
   show_notifications: boolean;
   background_consent_granted: boolean;
   theme_preference: "system" | "light" | "dark";
+  color_palette?: string;
 }
 
 export async function call<T>(conn: Connection, method: string, route: string, body?: unknown): Promise<T> {

@@ -6,6 +6,11 @@ streams PSCR binary frames. The host relays them to the desktop UI over the cont
 
     [1 byte n][n bytes device_id UTF-8][PSCR frame as received]
 
+Since 1.2 the phone can also stream its playback audio (PAUD frames: 8-byte big-endian pts in
+µs + PCM16 LE interleaved). The PC asks for it per phone with `audio_request {enabled}`; the phone
+answers with `audio_changed {audio_active, sample_rate, channels}`. PAUD frames are relayed to the
+UI with the same device-id prefix as video; the UI tells them apart by the 4-byte tag.
+
 Input from the UI is forwarded to the phone as encrypted `phone_screen`/`input` messages, but
 only while the phone said control is available and the PC user has phone control enabled.
 The phone enforces its own consent too; the host check is defence in depth.
@@ -18,7 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nexremote_server.features.base import Feature, available
-from nexremote_server.protocol.constants import PHONE_SCREEN_FRAME
+from nexremote_server.protocol.constants import PHONE_AUDIO_FRAME, PHONE_SCREEN_FRAME
 from nexremote_server.protocol.frames import parse_phone_screen
 from nexremote_server.protocol.jsonutil import get_bool, get_float, get_int, get_str
 
@@ -37,6 +42,10 @@ class PhoneScreenState:
     fps: int = 30
     rotation: int = 0
     control_available: bool = False
+    audio_available: bool = False
+    audio_active: bool = False
+    sample_rate: int = 48000
+    channels: int = 2
     config: bytes = b""  # last codec-config frame, replayed to UI viewers that join late
     frames: int = 0
 
@@ -49,6 +58,10 @@ class PhoneScreenState:
             "fps": self.fps,
             "rotation": self.rotation,
             "control_available": self.control_available,
+            "audio_available": self.audio_available,
+            "audio_active": self.audio_active,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
         }
 
 
@@ -105,15 +118,27 @@ class PhoneScreenFeature(Feature):
                 st.fps = get_int(msg, "fps", st.fps)
                 st.rotation = get_int(msg, "rotation", st.rotation)
                 st.control_available = get_bool(msg, "control_available", st.control_available)
+                st.audio_available = get_bool(msg, "audio_available", st.audio_available)
                 if action == "start":
                     st.config = b""
                     st.frames = 0
+                    st.audio_active = False
                 self.ctx.bus.publish(
                     "phone_screen_started" if action == "start" else "phone_screen_changed",
                     {"device_id": session.device_id, "device_name": session.device_name, **st.describe()},
                 )
             case "stop":
                 self._stopped(session)
+            case "audio_changed":
+                st.audio_active = get_bool(msg, "audio_active", False)
+                st.sample_rate = max(8000, min(96000, get_int(msg, "sample_rate", st.sample_rate)))
+                st.channels = max(1, min(2, get_int(msg, "channels", st.channels)))
+                if "audio_available" in msg:
+                    st.audio_available = get_bool(msg, "audio_available", st.audio_available)
+                self.ctx.bus.publish(
+                    "phone_screen_changed",
+                    {"device_id": session.device_id, "device_name": session.device_name, **st.describe()},
+                )
             case "control_changed":
                 st.control_available = get_bool(msg, "control_available", st.control_available)
                 self.ctx.bus.publish(
@@ -122,6 +147,11 @@ class PhoneScreenFeature(Feature):
                 )
 
     async def handle_binary(self, session, tag: bytes, data: bytes) -> bool:
+        if tag == PHONE_AUDIO_FRAME:
+            st = self._state(session)
+            if st.active and st.audio_active and self.ctx.bus.has_subscribers:
+                self.ctx.bus.publish_binary(relay_prefix(session.device_id) + data)
+            return True
         if tag != PHONE_SCREEN_FRAME:
             return False
         st = self._state(session)
@@ -188,6 +218,19 @@ class PhoneScreenFeature(Feature):
         if not self._state(session).active:
             return "not_sharing"
         await session.send_encrypted({"type": "phone_screen", "action": "request_keyframe"})
+        return None
+
+    async def request_audio(self, device_id: str, enabled: bool) -> str | None:
+        """Ask the phone to start or stop streaming its playback audio to this PC."""
+        session = self.ctx.find_session(device_id)
+        if session is None:
+            return "device_not_connected"
+        st = self._state(session)
+        if not st.active:
+            return "not_sharing"
+        if enabled and not st.audio_available:
+            return "audio_not_available_on_phone"
+        await session.send_encrypted({"type": "phone_screen", "action": "audio_request", "enabled": bool(enabled)})
         return None
 
     async def stop_share(self, device_id: str) -> str | None:
