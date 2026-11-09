@@ -169,3 +169,18 @@ For lower policy risk, do not market NexRemote as a child-directed product. The 
 - **New permission:** `RECORD_AUDIO`, used only for AudioPlaybackCapture behind "Let the PC hear this phone". The microphone is never recorded, and the privacy policy (2026-11-06) covers it.
 - **Data safety:** keep the "no data collected" position. Phone audio, like the screen, goes only to the user's own PC and never to the developer.
 - **Video:** if Play asks about the permission, explain playback capture during screen sharing. The existing FGS (mediaProjection) video still applies.
+
+### Release 1.3 (2026-11-10)
+
+**GitHub Releases**
+- `v1.3.0` is the first installable CI APK. It is signed with a dedicated sideload key (repo secrets; local copy `C:\Projects\Execution\github-sideload.jks`), never the Play upload key. Downloaded from the public `releases/latest` link, installed on a Galaxy A6+, and tested against the 1.3 host: discovery, pairing, encrypted session, task manager, touchpad.
+
+**Microsoft Store**
+- Submission 4 (`NexRemote_1.3.0.0_x64.msixbundle`) is in certification. 1.2.0.0 is live.
+
+**Google Play (not sent for review)**
+- Draft release 4 on *Closed testing – Alpha* holds `nexremote-1.3.0-vc6.aab` (1.3.0, versionCode 6). vc5 was uploaded and removed from the draft, and it dropped 12 devices because `RECORD_AUDIO` implied a required microphone. vc6 marks the microphone optional and drops none.
+- **Blocker:** https://youtu.be/H63TporcmqY is a general product tour. It doesn't show the Accessibility disclosure or the screen-share foreground service, so it can't back those declarations.
+  - The foreground-service declaration was saved with that link by mistake and has **not** been sent. Replace the link before pressing Send for review.
+  - The Accessibility declaration is not filled in. Planned answers: App functionality; no personal or sensitive data collected or shared.
+  - Correct videos, to upload as unlisted: `dist/store-assets/nexremote-pc-control-accessibility-demo.mp4` (Accessibility) and `dist/store-assets/nexremote-screen-share-fgs-demo.mp4` (foreground service). They show the older blue UI, but the same flow.
