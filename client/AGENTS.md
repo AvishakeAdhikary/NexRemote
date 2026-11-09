@@ -81,7 +81,7 @@ Use the existing Gradle wrapper from `client/NexRemote/`.
 
 ## Server Contract
 
-The Windows host is `windows_app/server/` (Python/FastAPI, the protocol server) with `windows_app/desktop/` (Electron UI). The legacy WinUI host in `windows_app/NexRemote/` is still the reference for v1 behaviour until it is deleted. Protocol changes must land in the client and `windows_app/server/` together (see root `AGENTS.md`). Preserve these client/server contracts:
+The Windows host is `windows_app/server/` (Python/FastAPI, the protocol server) with `windows_app/desktop/` (Electron UI). The WinUI host that shipped as Store 1.0.0.0 has been removed from the repo (git history keeps it); the root `AGENTS.md` wire contract describes its v1 behaviour. Protocol changes must land in the client and `windows_app/server/` together (see root `AGENTS.md`). Preserve these client/server contracts:
 
 - UDP discovery sends `NEXREMOTE_DISCOVER` to port `37020`.
 - Discovery responses use JSON fields including `type`, `name`, `port`, `port_insecure`, `id`, `version`, and `cert_fingerprint`.

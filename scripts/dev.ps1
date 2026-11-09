@@ -20,7 +20,7 @@ if ($IsWindows) {
 }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$windowsProject = Join-Path (Join-Path (Join-Path (Join-Path $root 'windows_app') 'NexRemote') 'NexRemote') 'NexRemote.csproj'
+$desktopProject = Join-Path (Join-Path $root 'windows_app') 'desktop'
 $androidProject = Join-Path (Join-Path $root 'client') 'NexRemote'
 
 function Write-Section {
@@ -80,20 +80,17 @@ function Get-ConnectedAdbDevice {
 
 function Start-WindowsHost {
     Write-Section 'Windows host'
-    Invoke-CommandChecked -Message 'dotnet build (Windows dev)' -ScriptBlock {
-        & dotnet build $windowsProject --configuration $Configuration
+    # npm run dev starts Next, Electron and the uv-run sidecar together.
+    $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
+    if (-not $npm) {
+        throw 'npm was not found. Install Node.js to run the Windows host.'
     }
 
-    $process = Start-Process -FilePath 'dotnet' -ArgumentList @(
-        'run',
-        '--project', $windowsProject,
-        '--configuration', $Configuration,
-        '--no-build'
-    ) -WorkingDirectory (Split-Path -Parent $windowsProject) -PassThru
+    $process = Start-Process -FilePath $npm -ArgumentList @('run', 'dev') -WorkingDirectory $desktopProject -PassThru
 
     Start-Sleep -Seconds 2
     if ($process.HasExited) {
-        throw 'The Windows host exited immediately after launch. Check the console output from dotnet run.'
+        throw 'The Windows host exited immediately after launch. Run npm run dev in windows_app/desktop to see why.'
     }
 
     Write-Host "Windows host started. PID: $($process.Id)" -ForegroundColor Green
@@ -162,7 +159,7 @@ function Start-AndroidDebug {
 
 Write-Host "`nNexRemote development environment" -ForegroundColor Cyan
 Write-Host "Root: $root" -ForegroundColor DarkGray
-Write-Host "Windows project: $windowsProject" -ForegroundColor DarkGray
+Write-Host "Windows project: $desktopProject" -ForegroundColor DarkGray
 Write-Host "Android project: $androidProject" -ForegroundColor DarkGray
 
 if (-not $AndroidOnly) {

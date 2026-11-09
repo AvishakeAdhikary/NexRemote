@@ -1,5 +1,5 @@
 # NexRemote production build script
-# Builds the current WinUI 3 server and native Android client into dist/.
+# Builds the Windows host (Electron + Python sidecar, MSIX) and the Android client into dist/.
 
 param(
     [ValidateSet('Debug', 'Release')]
@@ -10,8 +10,9 @@ param(
     [switch]$NoTests,
     [switch]$AndroidBundle,
 
-    [ValidateSet('x64', 'arm64', 'x86', 'win-x64', 'win-arm64', 'win-x86')]
-    [string]$WindowsRuntime = 'x64'
+    # Fail instead of producing an unsigned APK. Android refuses to install unsigned APKs,
+    # so every build that gets published (CI on master and tags) must pass this.
+    [switch]$RequireSigning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,7 +24,8 @@ if ($IsWindows) {
 }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$windowsProject = Join-Path (Join-Path (Join-Path (Join-Path $root 'windows_app') 'NexRemote') 'NexRemote') 'NexRemote.csproj'
+$serverProject = Join-Path (Join-Path $root 'windows_app') 'server'
+$desktopProject = Join-Path (Join-Path $root 'windows_app') 'desktop'
 $androidProject = Join-Path (Join-Path $root 'client') 'NexRemote'
 $distRoot = Join-Path $root 'dist'
 $windowsDistRoot = Join-Path $distRoot 'windows'
@@ -32,28 +34,6 @@ $androidDistRoot = Join-Path $distRoot 'android'
 function Write-Section {
     param([string]$Text)
     Write-Host "`n==> $Text" -ForegroundColor Cyan
-}
-
-function Resolve-WindowsRuntimeIdentifier {
-    param([string]$Runtime)
-
-    switch ($Runtime.ToLowerInvariant()) {
-        'x64' { 'win-x64' }
-        'arm64' { 'win-arm64' }
-        'x86' { 'win-x86' }
-        default { $Runtime }
-    }
-}
-
-function Resolve-WindowsPublishProfile {
-    param([string]$RuntimeIdentifier)
-
-    switch ($RuntimeIdentifier) {
-        'win-x64' { 'win-x64.pubxml' }
-        'win-arm64' { 'win-arm64.pubxml' }
-        'win-x86' { 'win-x86.pubxml' }
-        default { throw "Unsupported Windows runtime identifier: $RuntimeIdentifier" }
-    }
 }
 
 function Resolve-AdbCommand {
@@ -115,51 +95,22 @@ function Copy-ArtifactIfExists {
     return $true
 }
 
-function Sign-WindowsPublish {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$PublishDir
-    )
-
-    if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_PASSWORD)) {
-        return
-    }
-
-    $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-        Sort-Object FullName -Descending |
-        Select-Object -First 1
-
-    if (-not $signtool) {
-        Write-Warning 'Windows code-signing certificate was provided, but signtool.exe was not found. Leaving Windows binaries unsigned.'
-        return
-    }
-
-    $certPath = Join-Path $env:TEMP 'nexremote-signing.pfx'
-    [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGN_CERT_BASE64))
-    $timestamp = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_TIMESTAMP_URL)) { 'http://timestamp.digicert.com' } else { $env:WINDOWS_SIGN_TIMESTAMP_URL }
-
-    Get-ChildItem $PublishDir -Recurse -File |
-        Where-Object { $_.Extension -in '.exe', '.dll', '.msix', '.appx' } |
-        ForEach-Object {
-            & $signtool.FullName sign /f $certPath /p $env:WINDOWS_SIGN_CERT_PASSWORD /fd SHA256 /tr $timestamp /td SHA256 $_.FullName | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to sign Windows artifact: $($_.FullName)"
-            }
-        }
-}
-
 function Resolve-AndroidApkSigner {
     $roots = @()
     if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $roots += $env:ANDROID_SDK_ROOT }
     if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) { $roots += $env:ANDROID_HOME }
     if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { $roots += (Join-Path (Join-Path $env:LOCALAPPDATA 'Android') 'Sdk') }
 
+    # Look for the launcher by exact name: a wildcard also matches lib/apksigner.jar, which can't be run.
+    $launcher = if ($IsWindows) { 'apksigner.bat' } else { 'apksigner' }
     foreach ($rootPath in $roots) {
-        $candidate = Get-ChildItem (Join-Path $rootPath 'build-tools') -Recurse -File -Filter apksigner* -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
+        $candidate = Get-ChildItem (Join-Path $rootPath 'build-tools') -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName $launcher } |
+            Where-Object { Test-Path $_ } |
             Select-Object -First 1
         if ($candidate) {
-            return $candidate.FullName
+            return $candidate
         }
     }
 
@@ -177,83 +128,84 @@ function Sign-AndroidPublish {
     if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEYSTORE_BASE64) -or
         [string]::IsNullOrWhiteSpace($env:ANDROID_KEYSTORE_PASSWORD) -or
         [string]::IsNullOrWhiteSpace($env:ANDROID_KEY_ALIAS)) {
+        if ($RequireSigning) {
+            throw 'Signing is required but ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD or ANDROID_KEY_ALIAS is not set. An unsigned APK cannot be installed.'
+        }
+        Write-Warning 'No signing key configured: the release APK is unsigned and Android will refuse to install it.'
         return
     }
 
     $storePassword = $env:ANDROID_KEYSTORE_PASSWORD
-    $keyPassword = if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEY_PASSWORD)) { $storePassword } else { $env:ANDROID_KEY_PASSWORD }
-    $keystorePath = Join-Path $env:TEMP 'nexremote-android-release.jks'
+    $env:NEXREMOTE_APK_KEY_PASS = if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEY_PASSWORD)) { $storePassword } else { $env:ANDROID_KEY_PASSWORD }
+    $keystorePath = Join-Path ([IO.Path]::GetTempPath()) 'nexremote-android-release.jks'
     [IO.File]::WriteAllBytes($keystorePath, [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
 
-    $apksigner = Resolve-AndroidApkSigner
-    if ($apksigner -and (Test-Path $ReleaseApk)) {
-        $signedApk = Join-Path (Split-Path -Parent $ReleaseApk) 'NexRemote-android-release-signed.apk'
-        & $apksigner sign --ks $keystorePath --ks-pass "pass:$storePassword" --key-pass "pass:$keyPassword" --ks-key-alias $env:ANDROID_KEY_ALIAS --out $signedApk $ReleaseApk | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to sign Android APK: $ReleaseApk"
-        }
-        Move-Item $signedApk $ReleaseApk -Force
-    }
-    elseif (Test-Path $ReleaseApk) {
-        & jarsigner -keystore $keystorePath -storepass $storePassword -keypass $keyPassword -sigalg SHA256withRSA -digestalg SHA-256 $ReleaseApk $env:ANDROID_KEY_ALIAS | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to sign Android APK: $ReleaseApk"
-        }
-    }
+    try {
+        if (Test-Path $ReleaseApk) {
+            # apksigner only: jarsigner writes a v1 signature, which Android 11+ rejects for apps targeting API 30+.
+            $apksigner = Resolve-AndroidApkSigner
+            if (-not $apksigner) {
+                throw 'apksigner was not found in the Android SDK build-tools.'
+            }
+            $signedApk = Join-Path (Split-Path -Parent $ReleaseApk) 'NexRemote-android-release-signed.apk'
+            & $apksigner sign --ks $keystorePath --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:NEXREMOTE_APK_KEY_PASS --ks-key-alias $env:ANDROID_KEY_ALIAS --out $signedApk $ReleaseApk
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to sign Android APK: $ReleaseApk"
+            }
+            Move-Item $signedApk $ReleaseApk -Force
+            Remove-Item "$ReleaseApk.idsig" -Force -ErrorAction SilentlyContinue
 
-    if ($ReleaseBundle -and (Test-Path $ReleaseBundle)) {
-        & jarsigner -keystore $keystorePath -storepass $storePassword -keypass $keyPassword -sigalg SHA256withRSA -digestalg SHA-256 $ReleaseBundle $env:ANDROID_KEY_ALIAS | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to sign Android bundle: $ReleaseBundle"
+            & $apksigner verify --verbose --print-certs $ReleaseApk
+            if ($LASTEXITCODE -ne 0) {
+                throw "The signed APK failed verification: $ReleaseApk"
+            }
         }
+        elseif ($RequireSigning) {
+            throw "No release APK to sign at $ReleaseApk"
+        }
+
+        if ($ReleaseBundle -and (Test-Path $ReleaseBundle)) {
+            & jarsigner -keystore $keystorePath -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env NEXREMOTE_APK_KEY_PASS -sigalg SHA256withRSA -digestalg SHA-256 $ReleaseBundle $env:ANDROID_KEY_ALIAS | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to sign Android bundle: $ReleaseBundle"
+            }
+        }
+    }
+    finally {
+        Remove-Item $keystorePath -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\NEXREMOTE_APK_KEY_PASS -ErrorAction SilentlyContinue
     }
 }
 
 function Build-Windows {
-    param([string]$RuntimeIdentifier)
-
-    Write-Section "Windows $RuntimeIdentifier"
+    Write-Section 'Windows (Electron + Python sidecar)'
     New-Item -ItemType Directory -Path $windowsDistRoot -Force | Out-Null
 
-    $profile = Resolve-WindowsPublishProfile -RuntimeIdentifier $RuntimeIdentifier
-    $publishDir = Join-Path (Join-Path $windowsDistRoot $RuntimeIdentifier) 'publish'
-    $zipPath = Join-Path $windowsDistRoot "NexRemote-$RuntimeIdentifier.zip"
-
-    Invoke-CommandChecked -Message 'dotnet restore (Windows)' -ScriptBlock {
-        & dotnet restore $windowsProject --runtime $RuntimeIdentifier
+    Invoke-CommandChecked -Message 'uv sync (server)' -ScriptBlock {
+        Push-Location $serverProject
+        try { & uv sync } finally { Pop-Location }
     }
 
-    Invoke-CommandChecked -Message 'dotnet build (Windows)' -ScriptBlock {
-        & dotnet build $windowsProject `
-            --configuration $Configuration `
-            --runtime $RuntimeIdentifier `
-            --no-restore `
-            -p:PublishProfile=$profile `
-            -p:PublishTrimmed=false `
-            -p:PublishReadyToRun=false `
-            -p:PublishSingleFile=false
+    if (-not $NoTests) {
+        Invoke-CommandChecked -Message 'Server tests' -ScriptBlock {
+            Push-Location $serverProject
+            try { & uv run pytest } finally { Pop-Location }
+        }
     }
 
-    Invoke-CommandChecked -Message 'dotnet publish (Windows)' -ScriptBlock {
-        & dotnet publish $windowsProject `
-            --configuration $Configuration `
-            --runtime $RuntimeIdentifier `
-            --self-contained true `
-            --no-restore `
-            -p:PublishProfile=$profile `
-            -p:PublishDir=$publishDir `
-            -p:PublishTrimmed=false `
-            -p:PublishReadyToRun=false `
-            -p:PublishSingleFile=false
+    Invoke-CommandChecked -Message 'npm ci (desktop)' -ScriptBlock {
+        Push-Location $desktopProject
+        try { & npm ci } finally { Pop-Location }
     }
 
-    Sign-WindowsPublish -PublishDir $publishDir
-
-    if (Test-Path $zipPath) {
-        Remove-Item $zipPath -Force
+    Invoke-CommandChecked -Message 'MSIX package' -ScriptBlock {
+        Push-Location $desktopProject
+        try { & npm run package:appx } finally { Pop-Location }
     }
-    Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipPath -Force
-    Write-Host "Windows package: $zipPath" -ForegroundColor Green
+
+    Get-ChildItem (Join-Path $desktopProject 'release') -Filter '*.appx' |
+        ForEach-Object { Copy-Item $_.FullName $windowsDistRoot -Force }
+    Write-Host "Windows packages: $windowsDistRoot" -ForegroundColor Green
 }
 
 function Find-AndroidArtifact {
@@ -343,8 +295,7 @@ Write-Host "`nNexRemote production build`n" -ForegroundColor Cyan
 Write-Host "Root: $root" -ForegroundColor DarkGray
 
 if (-not $SkipWindows) {
-    $runtimeIdentifier = Resolve-WindowsRuntimeIdentifier -Runtime $WindowsRuntime
-    Build-Windows -RuntimeIdentifier $runtimeIdentifier
+    Build-Windows
 }
 
 if (-not $SkipAndroid) {

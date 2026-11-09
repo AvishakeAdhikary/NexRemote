@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="windows_app/NexRemote/NexRemote/Assets/Brand/logo.png" alt="NexRemote Logo" width="128">
+  <img src="windows_app/desktop/public/logo.svg" alt="NexRemote Logo" width="128">
 </p>
 
 <h1 align="center">NexRemote</h1>
@@ -42,12 +42,12 @@ NexRemote is free, ad-free, and does not include telemetry.
 
 ## Current Architecture
 
-The current repo uses a native Windows host and a native Android client.
+The repo holds a Windows host and a native Android client.
 
 ```text
 Windows PC host
-  windows_app/NexRemote/
-  WinUI 3 + .NET 8
+  windows_app/desktop/ (Electron + Next.js UI)
+  windows_app/server/  (Python: FastAPI, SQLite, managed with uv)
   WebSocket server, UDP discovery, QR payloads, screen/camera/audio capture,
   native input, file explorer, task manager, media control, trusted devices
 
@@ -71,10 +71,10 @@ The Windows app is already published on the Microsoft Store and should be treate
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| .NET SDK | 8.x | Build and run the WinUI Windows host |
-| Windows App SDK workload/support | Project-managed through NuGet | WinUI 3 desktop app |
-| JDK | 17 | Android Gradle builds |
-| Android SDK | API 36 / build-tools 36.x | Android client builds |
+| Node.js and npm | current LTS | Electron + Next.js desktop UI |
+| uv | latest | Python backend (it downloads the pinned Python) |
+| JDK | 17+ | Android Gradle builds |
+| Android SDK | API 37 / build-tools 36.x | Android client builds |
 | ADB | latest platform-tools | Optional device install, USB flow, and debug launch |
 
 ### Clone
@@ -87,9 +87,11 @@ cd NexRemote
 ### Windows Host
 
 ```powershell
-cd windows_app\NexRemote
-dotnet build .\NexRemote.slnx -c Debug -p:Platform=x64
-dotnet run --project .\NexRemote\NexRemote.csproj -c Debug
+cd windows_app\server
+uv sync
+cd ..\desktop
+npm install
+npm run dev
 ```
 
 ### Android Client
@@ -148,10 +150,10 @@ Outputs are staged under `dist/android/`, including the APK, optional AAB, and r
 ### Windows Only
 
 ```powershell
-.\scripts\build.ps1 -SkipAndroid -WindowsRuntime x64
+.\scripts\build.ps1 -SkipAndroid
 ```
 
-Outputs are staged under `dist/windows/`.
+The MSIX package is staged under `dist/windows/`.
 
 ### Both Platforms
 
@@ -159,7 +161,7 @@ Outputs are staged under `dist/windows/`.
 .\scripts\build.ps1
 ```
 
-Signing is driven by environment variables when present. Do not commit signing material, keystores, certificates, or generated private artifacts.
+Signing is driven by environment variables when present. Add `-RequireSigning` to fail rather than produce an unsigned APK, which Android will not install. Do not commit signing material, keystores, certificates, or generated private artifacts.
 
 ---
 
@@ -179,14 +181,8 @@ NexRemote/
 │       └── gradle/libs.versions.toml
 ├── windows_app/
 │   ├── AGENTS.md
-│   └── NexRemote/
-│       ├── NexRemote.slnx
-│       └── NexRemote/
-│           ├── Services/       # server, discovery, auth, capture, input, files
-│           ├── Models/         # protocol and settings models
-│           ├── ViewModels/     # WinUI view models
-│           ├── Assets/         # Store, brand, and legal assets
-│           └── NexRemote.csproj
+│   ├── desktop/                # Electron shell + Next.js UI, MSIX packaging
+│   └── server/                 # Python backend: protocol server, features, SQLite
 ├── shared/                     # shared assets/protocol notes
 ├── docs/                       # legal and Store-readiness docs
 ├── scripts/                    # development and production build scripts

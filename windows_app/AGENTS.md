@@ -6,14 +6,14 @@ Scope: the Windows host workspace under `windows_app/`. The wire contract is def
 
 The Windows app is the NexRemote PC host. It is published on the Microsoft Store as `NeuralNexusStudios.NexRemote`.
 
-It is being rebuilt from WinUI 3/.NET to:
+It was rebuilt from WinUI 3/.NET (Store 1.0.0.0; the old source is in git history) to:
 
 - **Frontend:** Electron with a Next.js UI.
 - **Backend:** Python, managed with astral-uv, built on FastAPI, with SQLite.
 
-The rebuild must:
+Every release must:
 
-- Ship as a normal Store update (1.0.0.0 → 1.1.0.0) under the **same package identity and publisher**.
+- Ship as a normal Store update under the **same package identity and publisher**.
 - Keep every existing feature.
 - Keep working with Android clients already in users' hands (protocol v1, byte-for-byte).
 - Carry over each user's settings, server certificate and trusted devices, so paired phones don't have to pair again.
@@ -41,7 +41,6 @@ windows_app/
     src/app/                 Next.js App Router pages (static export)
     build/appx/              AppxManifest template + Store assets
     electron-builder.yml
-  NexRemote/                 LEGACY WinUI host. Read-only reference; delete once the parity checklist passes.
 ```
 
 ## How it runs
@@ -122,7 +121,7 @@ windows_app/
 ## Store-safety rules
 
 - **Identity:** never change `identityName` (`NeuralNexusStudios.NexRemote`), `publisher` (`CN=8559855F-6955-4418-A6D8-835C3238CF34`) or `publisherDisplayName` (`Neural Nexus Studios`) in `electron-builder.yml` or the AppxManifest template.
-- **Versions:** keep the form `Major.Minor.Build.0` and only ever increase them. The current release is `1.2.0.0` (1.1.0.0 was submitted first).
+- **Versions:** keep the form `Major.Minor.Build.0` and only ever increase them. The current release is `1.3.0.0`.
 - **The AppxManifest template must keep:**
   - Capabilities: `runFullTrust`, `internetClient`, `internetClientServer`, `privateNetworkClientServer`, `webcam`.
   - Firewall rules for TCP 8765/8766 and UDP 37020.
@@ -133,7 +132,7 @@ windows_app/
 
 ## Feature parity checklist
 
-Every item must work before the legacy `NexRemote/` folder is deleted. Record results in `windows_app/.claude/test-runs.md` (gitignored), and state any gaps plainly.
+Every item must keep working from release to release. Record results in `windows_app/.claude/test-runs.md` (gitignored), and state any gaps plainly.
 
 - **Server lifecycle:** start/stop from the UI and the tray, minimize to tray, single instance, start with Windows.
 - **Connection:**
@@ -156,6 +155,13 @@ Every item must work before the legacy `NexRemote/` folder is deleted. Record re
   - `PSCR` decode in the UI, input relay back to the phone, Back/Home/Recents.
   - 1.2: a grid of every sharing phone (or one phone), full screen through the Fullscreen API with floating controls, and per-phone audio (`POST /phone/{id}/audio`, `PAUD` relayed with the video prefix and played by `lib/pcm-player.ts`).
 - **Upgrade:** after installing over Store 1.0.0.0, settings, the certificate and trusted devices carry over and the phone reconnects without pairing again.
+
+## Getting the Android app
+
+`src/app/get-app/page.tsx` (sidebar: "Get the app") has Google Play and GitHub buttons plus a QR code for each.
+
+- The Play listing returns 404 until production access is granted, so the page says Play is in closed testing. Remove that sentence when the app goes live.
+- New external sites must be added to `EXTERNAL_ALLOWLIST` in `electron/main.ts`.
 
 ## Theming
 

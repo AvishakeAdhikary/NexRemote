@@ -111,6 +111,12 @@ export default function DashboardPage() {
           <p className="mt-3 text-xs text-muted">
             Or enter <span className="font-mono">{state.lan_ip}</span> manually. Your phone must be on the same network.
           </p>
+          <p className="mt-2 text-xs text-muted">
+            Don&apos;t have the app yet?{" "}
+            <Link href="/get-app/" className="font-medium text-accent hover:underline">
+              Get it for Android
+            </Link>
+          </p>
         </Card>
       </div>
 

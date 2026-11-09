@@ -28,6 +28,7 @@ const EXTERNAL_ALLOWLIST = [
   "https://buymeacoffee.com/",
   "https://vigem.org/",
   "https://github.com/",
+  "https://play.google.com/",
   "https://avishakeadhikary.github.io/",
   "https://developer.android.com/",
   "mailto:neural.nex.studios@gmail.com",

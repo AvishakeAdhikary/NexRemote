@@ -13,52 +13,12 @@ permissions:
 
 env:
   CI: true
-  DOTNET_NOLOGO: true
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-  WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
-  WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
-  WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
   ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
   ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
   ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
   ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
 jobs:
-  # windows:
-  #   name: Windows ${{ matrix.runtime }}
-  #   runs-on: windows-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - runtime: x64
-  #           artifact: NexRemote-win-x64.zip
-  #         - runtime: arm64
-  #           artifact: NexRemote-win-arm64.zip
-  #         - runtime: x86
-  #           artifact: NexRemote-win-x86.zip
-  #   steps:
-  #     - uses: actions/checkout@v4
-
-  #     - name: Setup .NET
-  #       uses: actions/setup-dotnet@v4
-  #       with:
-  #         dotnet-version: 8.0.x
-
-  #     - name: Build Windows package
-  #       if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
-  #       shell: pwsh
-  #       run: .\scripts\build.ps1 -Configuration Release -SkipAndroid -WindowsRuntime ${{ matrix.runtime }}
-
-  #     - name: Upload Windows artifact
-  #       if: matrix.runtime == 'x64' || startsWith(github.ref, 'refs/tags/v')
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: windows-${{ matrix.runtime }}
-  #         path: dist/windows/${{ matrix.artifact }}
-  #         if-no-files-found: error
-  #         retention-days: 14
-
   android:
     name: Android
     runs-on: ubuntu-latest
@@ -73,29 +33,26 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list includes "tools", which no longer exists in the SDK repository.
+          packages: platform-tools
 
       - name: Install Android packages
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platforms;android-37.0" "build-tools;36.1.0"
 
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make Gradle wrapper executable
         run: chmod +x client/NexRemote/gradlew
-      
+
+      # Pull requests from forks get no secrets, so only they may build unsigned.
       - name: Build Android package
         shell: pwsh
-        run: .\scripts\build.ps1 -Configuration Release -SkipWindows -AndroidBundle
-
-      - name: Debug Android outputs
-        run: |
-          echo "==== DIST ANDROID ===="
-          ls -R dist/android || true
-          echo "==== GRADLE OUTPUTS ===="
-          ls -R client/NexRemote/app/build/outputs || true
+        run: .\scripts\build.ps1 -Configuration Release -SkipWindows ${{ github.event_name != 'pull_request' && '-RequireSigning' || '' }}
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
@@ -103,27 +60,19 @@ jobs:
           name: android
           path: |
             dist/android/NexRemote-android-release.apk
-            dist/android/NexRemote-android-release.aab
             dist/android/mapping.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   release-edge:
     name: Release Edge
     runs-on: ubuntu-latest
-    # needs: [windows, android]
     needs: [android]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     concurrency:
       group: nexremote-edge-release
       cancel-in-progress: true
     steps:
-      # - uses: actions/download-artifact@v4
-      #   with:
-      #     path: release
-      #     pattern: windows-*
-      #     merge-multiple: true
-
       - uses: actions/download-artifact@v4
         with:
           path: release
@@ -140,24 +89,17 @@ jobs:
           make_latest: false
           generate_release_notes: true
           overwrite_files: true
-          files: release/*
+          files: release/NexRemote-android-release.apk
 
   release-versioned:
     name: Release Versioned
     runs-on: ubuntu-latest
-    # needs: [windows, android]
     needs: [android]
     if: startsWith(github.ref, 'refs/tags/v')
     concurrency:
       group: nexremote-versioned-${{ github.ref_name }}
       cancel-in-progress: true
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release
-          pattern: windows-*
-          merge-multiple: true
-
       - uses: actions/download-artifact@v4
         with:
           path: release
@@ -173,4 +115,8 @@ jobs:
           make_latest: true
           generate_release_notes: true
           overwrite_files: true
-          files: release/*
+          body: |
+            **Android:** download `NexRemote-android-release.apk` below and open it on your phone (Android 8.0 or later). If you installed NexRemote from Google Play, uninstall that copy first, because the two builds are signed differently.
+
+            **Windows:** get NexRemote from the [Microsoft Store](https://apps.microsoft.com/detail/9P4RN2KGGJXC).
+          files: release/NexRemote-android-release.apk

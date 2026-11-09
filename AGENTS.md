@@ -17,7 +17,6 @@ No accounts, no cloud relay, no telemetry, no ads. Everything stays between the 
 |---|---|
 | `windows_app/server/` | Python backend (astral-uv project, FastAPI, SQLite via SQLModel). The protocol server, discovery, features, local control API. |
 | `windows_app/desktop/` | Electron shell + Next.js (static export) UI. Spawns and supervises the Python sidecar, tray, MSIX packaging. |
-| `windows_app/NexRemote/` | Legacy WinUI 3/.NET host. Protocol reference only until the rebuild passes the parity checklist, then deleted (git history keeps it). |
 | `client/NexRemote/` | Android app (Kotlin, Jetpack Compose, Gradle). |
 | `docs/legal/` | Privacy policy, terms, store submission notes. |
 | `scripts/` | `build.ps1` (build + signing), `dev.ps1`. |
@@ -104,6 +103,8 @@ Both sides must agree on all of this. Phones already in users' hands run the v1 
   - `versionCode` must increase on every upload.
   - Keystores come from env vars or CI secrets (see `scripts/build.ps1`), or, for local builds, the git-ignored `client/NexRemote/keystore.properties`. Never commit keystores or their passwords.
   - The upload key was replaced in November 2026 (the old password was lost). If Play rejects a bundle with an upload-key mismatch, request an upload key reset with the new key's certificate (`dist/store-assets/upload_certificate.pem`, re-exportable with `keytool -export -rfc`).
+- **GitHub Releases APK:** CI signs it with a separate sideload key (repo secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`), never the Play upload key. Play re-signs its installs with Google's app-signing key, so the two builds can't update each other whichever key is used. Keep that sideload key stable or GitHub users can't update in place. CI passes `-RequireSigning`, so a missing key fails the build instead of publishing an APK Android refuses to install. CI builds no AAB; Play bundles are built locally with the upload key.
+- **Download links in the Windows app:** `windows_app/desktop/src/app/get-app/page.tsx` links to `releases/latest` and its `NexRemote-android-release.apk` asset, so that asset name must not change.
 - **Version bumps:** bump Windows and Android together when a release adds protocol features.
 
 ## Ground rules
@@ -125,3 +126,4 @@ Both sides must agree on all of this. Phones already in users' hands run the v1 
 | Android tests | `.\gradlew.bat :app:testDebugUnitTest` (`client/NexRemote/`) |
 | Android release | `.\gradlew.bat :app:bundleRelease` (`client/NexRemote/`) |
 | Full build | `.\scripts\build.ps1` (repo root) |
+| Publish a release | push tag `vX.Y.Z` (CI builds, signs and publishes the APK as the latest GitHub release) |

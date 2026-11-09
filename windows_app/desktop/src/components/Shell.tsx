@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Download,
   Gauge,
   Heart,
   LoaderCircle,
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: Gauge },
   { href: "/devices/", label: "Devices", icon: Smartphone },
   { href: "/phone/", label: "Phone screen", icon: MonitorSmartphone },
+  { href: "/get-app/", label: "Get the app", icon: Download },
   { href: "/compatibility/", label: "Compatibility", icon: Puzzle },
   { href: "/settings/", label: "Settings", icon: SettingsIcon },
   { href: "/legal/", label: "Legal", icon: Scale },
