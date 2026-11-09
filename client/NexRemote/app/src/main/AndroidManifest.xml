@@ -5,6 +5,10 @@
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
+    <!-- RECORD_AUDIO would otherwise imply a required microphone, which the app never uses. -->
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
