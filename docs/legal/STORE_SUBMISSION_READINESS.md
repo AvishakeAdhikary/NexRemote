@@ -193,3 +193,11 @@ For lower policy risk, do not market NexRemote as a child-directed product. The 
   - Foreground service: media projection.
   - Accessibility: App functionality; no personal or sensitive data collected or shared; disclosure-video acknowledgement ticked.
 - The old tour video (H63TporcmqY) was deleted at the owner's request.
+
+### Android 1.3.1 (2026-11-10)
+- **Fixes:**
+  - The 1.3.0 release build crashed when the QR scanner opened. R8 broke the ML Kit code-scanner client; keep rules were added.
+  - The scanner module is now requested at install, with a bundled ZXing fallback.
+  - The device-name field can now be cleared.
+- **GitHub:** tag `v1.3.1`.
+- **Play:** release 5 on *Closed testing – Alpha* (`nexremote-1.3.1-vc7.aab`, versionCode 7) was sent for review the same day. It drops no devices, and the declarations are unchanged.
