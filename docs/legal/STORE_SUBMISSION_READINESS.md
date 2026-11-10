@@ -178,9 +178,18 @@ For lower policy risk, do not market NexRemote as a child-directed product. The 
 **Microsoft Store**
 - Submission 4 (`NexRemote_1.3.0.0_x64.msixbundle`) is in certification. 1.2.0.0 is live.
 
-**Google Play (not sent for review)**
-- Draft release 4 on *Closed testing – Alpha* holds `nexremote-1.3.0-vc6.aab` (1.3.0, versionCode 6). vc5 was uploaded and removed from the draft, and it dropped 12 devices because `RECORD_AUDIO` implied a required microphone. vc6 marks the microphone optional and drops none.
-- **Blocker:** https://youtu.be/H63TporcmqY is a general product tour. It doesn't show the Accessibility disclosure or the screen-share foreground service, so it can't back those declarations.
-  - The foreground-service declaration was saved with that link by mistake and has **not** been sent. Replace the link before pressing Send for review.
-  - The Accessibility declaration is not filled in. Planned answers: App functionality; no personal or sensitive data collected or shared.
-  - Correct videos, to upload as unlisted: `dist/store-assets/nexremote-pc-control-accessibility-demo.mp4` (Accessibility) and `dist/store-assets/nexremote-screen-share-fgs-demo.mp4` (foreground service). They show the older blue UI, but the same flow.
+**Google Play (sent for review 2026-11-10)**
+- Release 4 on *Closed testing – Alpha* holds `nexremote-1.3.0-vc6.aab` (1.3.0, versionCode 6). Its internal release name still reads "5 (1.3.0)". vc5 was uploaded and removed from the draft, and it dropped 12 devices because `RECORD_AUDIO` implied a required microphone. vc6 marks the microphone optional and drops none.
+- **Demo video:** https://youtu.be/Sfdjx1l4bKU (unlisted, Neural Nexus Studios channel; source `dist/store-assets/nexremote-1.3-demo.mp4`). It shows the 1.3 Windows and Android apps side by side:
+  - pairing approval
+  - MediaProjection consent and the ongoing Stop notification
+  - the in-app PC-control disclosure
+  - enabling the service in Accessibility settings
+  - PC Home / Recents / tap / Back
+  - Stop from the notification
+
+  Notification-shade contents other than NexRemote's are blurred, and the devices are shown as "My phone" and "My PC".
+- **Declarations:** both use that video.
+  - Foreground service: media projection.
+  - Accessibility: App functionality; no personal or sensitive data collected or shared; disclosure-video acknowledgement ticked.
+- The old tour video (H63TporcmqY) was deleted at the owner's request.
