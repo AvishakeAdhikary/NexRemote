@@ -11,7 +11,10 @@
 
 <p align="center">
   <a href="https://get.microsoft.com/installer/download/9p4rn2kggjxc?referrer=appbadge" target="_self">
-    <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" height="72" alt="Get it from Microsoft"/>
+  </a>
+  <a href="https://play.google.com/store/apps/details?id=com.neuralnexusstudios.nex_remote">
+    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="104" alt="Get it on Google Play"/>
   </a>
 </p>
 

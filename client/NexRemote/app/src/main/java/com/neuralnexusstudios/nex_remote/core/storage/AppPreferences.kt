@@ -60,10 +60,14 @@ class AppPreferences(context: Context) {
         refresh()
     }
 
+    /** An empty name means "use this phone's own name"; the PC never sees a blank name. */
     fun updateDeviceName(value: String) {
-        prefs.edit().putString(KEY_DEVICE_NAME, value.ifBlank { resolveInitialDeviceName() }).apply()
+        prefs.edit().putString(KEY_DEVICE_NAME, value.trim().ifBlank { resolveInitialDeviceName() }).apply()
         refresh()
     }
+
+    /** The name the PC sees when the user leaves the device name empty. */
+    fun defaultDeviceName(): String = resolveInitialDeviceName()
 
     fun updateAutoConnect(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO_CONNECT, enabled).apply()

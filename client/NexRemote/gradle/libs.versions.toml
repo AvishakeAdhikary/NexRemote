@@ -7,6 +7,7 @@ agp = "9.5.1"
 activityCompose = "1.10.0"
 appcompat = "1.7.0"
 barcodeScanner = "16.1.0"
+zxingEmbedded = "4.3.0"
 composeBom = "2026.09.00"
 coroutines = "1.9.0"
 coreKtx = "1.15.0"
@@ -53,6 +54,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version.ref = "barcodeScanner" }
+zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxingEmbedded" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
 
 [plugins]

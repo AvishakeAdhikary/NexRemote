@@ -24,8 +24,8 @@ android {
         applicationId = "com.neuralnexusstudios.nex_remote"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.3.0"
+        versionCode = 7
+        versionName = "1.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -107,6 +107,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.okhttp)
     implementation(libs.play.services.code.scanner)
+    implementation(libs.zxing.android.embedded)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

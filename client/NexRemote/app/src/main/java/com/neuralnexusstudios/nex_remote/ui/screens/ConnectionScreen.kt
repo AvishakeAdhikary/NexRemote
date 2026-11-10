@@ -1,12 +1,15 @@
 package com.neuralnexusstudios.nex_remote.ui.screens
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -40,9 +43,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanner
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.neuralnexusstudios.nex_remote.core.AppContainer
 import com.neuralnexusstudios.nex_remote.core.model.ConnectionStatus
 import com.neuralnexusstudios.nex_remote.core.model.ServerInfo
@@ -101,11 +109,27 @@ fun ConnectionScreen(
     var showUsbGuide by remember { mutableStateOf(false) }
     var usbStatus by remember { mutableStateOf(readUsbStatus(context)) }
 
+    fun connectScanned(server: ServerInfo) {
+        scope.launch { connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it }) }
+    }
+
+    val bundledScanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val raw = result.contents ?: return@rememberLauncherForActivityResult // cancelled
+        parseQrPayload(raw)?.let(::connectScanned) ?: scope.launch { snackbars.showSnackbar(QR_NOT_NEXREMOTE) }
+    }
+
+    fun scanQrNow() {
+        launchQrScanner(
+            context,
+            notify = { msg -> scope.launch { snackbars.showSnackbar(msg) } },
+            fallback = { bundledScanner.launch(bundledScanOptions()) },
+            onResult = ::connectScanned,
+        )
+    }
+
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            launchQrScanner(context, snackbars, onResult = { server ->
-                scope.launch { connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it }) }
-            })
+            scanQrNow()
         } else {
             scope.launch { snackbars.showSnackbar("Camera permission is required to scan a QR code.") }
         }
@@ -150,9 +174,7 @@ fun ConnectionScreen(
         if (!appContainer.preferences.settings.value.cameraDisclosureAccepted) {
             showDisclosure = true
         } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            launchQrScanner(context, snackbars, onResult = { server ->
-                scope.launch { connectToServer(appContainer, server, snackbars, onSuccess = onBack, setConnecting = { connecting = it }) }
-            })
+            scanQrNow()
         } else {
             scanLauncher.launch(Manifest.permission.CAMERA)
         }
@@ -503,39 +525,90 @@ private fun openSettingsIntent(context: Context, action: String) {
     }
 }
 
+private const val QR_TAG = "NexRemoteQr"
+private const val QR_NOT_NEXREMOTE = "That QR code isn't from NexRemote. Scan the code on the NexRemote dashboard on your PC."
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/**
+ * Scans the PC's pairing QR code.
+ *
+ * Google's code scanner is preferred (no camera code in the app), but it lives in Google Play
+ * services as an optional module that may not be downloaded yet, may be stuck downloading, or may
+ * not exist at all (phones without Play services). In every one of those cases, fall back to the
+ * bundled ZXing scanner, and ask Play services to fetch its module for next time.
+ */
 private fun launchQrScanner(
     context: Context,
-    snackbars: NxSnackbarState,
+    notify: (String) -> Unit,
+    fallback: () -> Unit,
     onResult: (ServerInfo) -> Unit,
 ) {
+    val activity = context.findActivity() ?: return fallback()
     val options = GmsBarcodeScannerOptions.Builder()
         .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
         .build()
-    val scanner = GmsBarcodeScanning.getClient(context, options)
-    scanner.startScan()
-        .addOnSuccessListener { barcode ->
-            val raw = barcode.rawValue.orEmpty()
-            runCatching {
-                val payload = JsonCodec.parseToJsonElement(raw).jsonObject
-                onResult(
-                    ServerInfo(
-                        name = payload["name"]?.jsonPrimitive?.contentOrNull ?: "PC",
-                        address = payload["host"]?.jsonPrimitive?.contentOrNull ?: "",
-                        port = payload["port"]?.jsonPrimitive?.intOrNull ?: 8765,
-                        portInsecure = payload["port_insecure"]?.jsonPrimitive?.intOrNull ?: 8766,
-                        id = payload["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                        certificateFingerprint = payload["cert_fingerprint"]?.jsonPrimitive?.contentOrNull
-                            ?: payload["certificate_fingerprint"]?.jsonPrimitive?.contentOrNull,
-                    ),
-                )
-            }.onFailure {
-                snackbars.dismiss()
+    val scanner = runCatching { GmsBarcodeScanning.getClient(activity, options) }.getOrElse {
+        Log.w(QR_TAG, "Google code scanner unavailable, using the built-in scanner", it)
+        return fallback()
+    }
+    val modules = ModuleInstall.getClient(activity)
+    modules.areModulesAvailable(scanner)
+        .addOnSuccessListener { availability ->
+            if (availability.areModulesAvailable()) {
+                startGoogleScan(scanner, notify, fallback, onResult)
+            } else {
+                modules.installModules(ModuleInstallRequest.newBuilder().addApi(scanner).build())
+                    .addOnFailureListener { Log.w(QR_TAG, "Scanner module install request failed", it) }
+                fallback()
             }
         }
         .addOnFailureListener {
-            snackbars.dismiss()
+            Log.w(QR_TAG, "Play services can't check the scanner module, using the built-in scanner", it)
+            fallback()
         }
 }
+
+private fun startGoogleScan(
+    scanner: GmsBarcodeScanner,
+    notify: (String) -> Unit,
+    fallback: () -> Unit,
+    onResult: (ServerInfo) -> Unit,
+) {
+    scanner.startScan()
+        .addOnSuccessListener { barcode ->
+            parseQrPayload(barcode.rawValue.orEmpty())?.let(onResult) ?: notify(QR_NOT_NEXREMOTE)
+        }
+        .addOnFailureListener {
+            // e.g. "Waiting for the Barcode UI module to be downloaded" although the module check passed.
+            Log.w(QR_TAG, "Google code scanner failed, using the built-in scanner", it)
+            fallback()
+        }
+}
+
+internal fun bundledScanOptions(): ScanOptions = ScanOptions()
+    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+    .setPrompt("Point the camera at the QR code on the NexRemote dashboard on your PC")
+    .setBeepEnabled(false)
+    .setOrientationLocked(false)
+internal fun parseQrPayload(raw: String): ServerInfo? = runCatching {
+    val payload = JsonCodec.parseToJsonElement(raw).jsonObject
+    val host = payload["host"]?.jsonPrimitive?.contentOrNull.orEmpty()
+    if (host.isBlank()) return null
+    ServerInfo(
+        name = payload["name"]?.jsonPrimitive?.contentOrNull ?: "PC",
+        address = host,
+        port = payload["port"]?.jsonPrimitive?.intOrNull ?: 8765,
+        portInsecure = payload["port_insecure"]?.jsonPrimitive?.intOrNull ?: 8766,
+        id = payload["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        certificateFingerprint = payload["cert_fingerprint"]?.jsonPrimitive?.contentOrNull
+            ?: payload["certificate_fingerprint"]?.jsonPrimitive?.contentOrNull,
+    )
+}.getOrNull()
 
 private suspend fun connectToServer(
     appContainer: AppContainer,

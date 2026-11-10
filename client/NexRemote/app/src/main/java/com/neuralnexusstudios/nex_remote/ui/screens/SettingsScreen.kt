@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +43,11 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val settings by appContainer.preferences.settings.collectAsState()
-    var deviceName by remember(settings.deviceName) { mutableStateOf(settings.deviceName) }
+    // Local text is the source of truth while editing. Keying it to the saved name made the
+    // field snap back to the system name the moment it was cleared (an empty name saves the
+    // phone's own name), so a new name couldn't be typed from scratch.
+    var deviceName by rememberSaveable { mutableStateOf(settings.deviceName) }
+    val defaultName = remember { appContainer.preferences.defaultDeviceName() }
 
     NxScaffold(title = "Settings", onBack = onBack) {
         Column(
@@ -61,8 +66,12 @@ fun SettingsScreen(
                         appContainer.preferences.updateDeviceName(it)
                     },
                     label = "Device name shown on your PC",
+                    placeholder = defaultName,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (deviceName.isBlank()) {
+                    Text("Left empty, your PC sees \"$defaultName\".", style = NxType.bodySmall, color = Nx.muted)
+                }
             }
 
             NxSectionLabel("Appearance")

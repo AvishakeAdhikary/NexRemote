@@ -74,6 +74,12 @@ The UI uses **Composables UI** (`com.composables:ui`, built on Compose Unstyled)
   - Scroll uses `precise: true` only when the host advertises `precise_scroll`.
   - Sockets use `NoDelaySocketFactory` (TCP_NODELAY). Without it, Nagle plus Windows delayed ACKs add up to 200 ms per touchpad move.
 - **Charts:** Vico (`com.patrykandpatrick.vico:compose`). The task-manager history lives in `TaskManagerRepository.history`, with a fixed 60-sample window so lines enter from the right.
+- **QR pairing** (`ConnectionScreen.kt`):
+  - Google's code scanner (`play-services-code-scanner`) is tried first. It is an optional Play services module, which the manifest asks for at install time (`com.google.mlkit.vision.DEPENDENCIES = barcode_ui`). The app checks it with `ModuleInstall` and, when it's missing or fails (for example "Waiting for the Barcode UI module to be downloaded", or no Play services), falls back to the bundled ZXing scanner (`com.journeyapps:zxing-android-embedded`, `ScanContract`).
+  - Never swallow scanner failures silently.
+  - `proguard-rules.pro` keeps the ML Kit code-scanner packages. Without them, the R8 release build crashed with an NPE as soon as the scanner client was created.
+  - ZXing adds optional camera/screen features; keep them all `required="false"` (check the merged manifest).
+- **Text fields:** `NxTextField` compares edits against the current value (`rememberUpdatedState`). Screens keep their own editing state rather than keying `remember` to a saved value: the device-name field used to snap back to the system name whenever it was cleared.
 - **Phone audio** (`service/PhoneAudioCapture.kt`): AudioPlaybackCapture on the share's MediaProjection, Android 10+, `RECORD_AUDIO` granted from the "Let the PC hear this phone" switch. Never the microphone.
 - Toolchain: Composables UI requires Kotlin 2.4 (the root `build.gradle.kts` pins the Kotlin Gradle plugin through the catalog) and `compileSdk` 37 (`targetSdk` stays 36).
 

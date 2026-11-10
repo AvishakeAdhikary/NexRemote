@@ -463,12 +463,15 @@ fun NxTextField(
 ) {
     val state = rememberTextFieldState(value)
     val latest by rememberUpdatedState(onValueChange)
+    // Compare against the current value, not the one captured when the field first composed;
+    // otherwise typing the text back to its original value was silently dropped.
+    val currentValue by rememberUpdatedState(value)
     LaunchedEffect(value) {
         if (state.text.toString() != value) state.setTextAndPlaceCursorAtEnd(value)
     }
     LaunchedEffect(state) {
         snapshotFlow { state.text.toString() }
-            .filter { it != value }
+            .filter { it != currentValue }
             .collect { latest(it) }
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
